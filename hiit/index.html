@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="HIIT 10: a 10-minute standing interval workout for Meta Ray-Ban Display. 10 moves, 40 seconds work, 20 seconds rest.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>HIIT 10</title>
+<style>
+  /* Additive display: black = see-through. Bright strokes on black read best. */
+  :root {
+    --work: #3df5c8;   /* mint for work */
+    --rest: #ffb21e;   /* amber for rest */
+    --text: #ffffff;
+    --dim:  #9fb0b8;
+    --u: min(1vw, 1vh); /* 1% of the shorter side; 600x600 => 6px */
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden; -webkit-user-select: none; user-select: none;
+  }
+  .screen {
+    position: absolute; inset: 0; display: none; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding: calc(var(--u) * 4);
+  }
+  .screen.active { display: flex; }
+
+  h1 { margin: 0; font-size: calc(var(--u) * 11); letter-spacing: .02em; color: var(--work); }
+  .sub { color: var(--dim); font-size: calc(var(--u) * 4.2); margin: calc(var(--u) * 1) 0 calc(var(--u) * 3); }
+
+  /* Start checklist */
+  .check { list-style: none; padding: 0; margin: 0 0 calc(var(--u) * 4); text-align: left; width: 100%; max-width: calc(var(--u) * 88); }
+  .check li {
+    display: flex; gap: calc(var(--u) * 2.5); align-items: flex-start;
+    font-size: calc(var(--u) * 4.6); line-height: 1.25; margin: calc(var(--u) * 2.2) 0;
+  }
+  .check .ico { color: var(--work); font-weight: 800; min-width: calc(var(--u) * 6); text-align: center; }
+  .check .music { color: var(--rest); }
+  .check small { display: block; color: var(--dim); font-size: calc(var(--u) * 3.6); margin-top: calc(var(--u) * .6); }
+
+  button {
+    font: inherit; font-weight: 700; color: #000; background: var(--work);
+    border: 0; border-radius: calc(var(--u) * 3);
+    padding: calc(var(--u) * 2.4) calc(var(--u) * 7);
+    font-size: calc(var(--u) * 5.2); cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--text); border: calc(var(--u) * .5) solid #4a5a60; }
+  button:focus-visible, button:focus { outline: calc(var(--u) * .8) solid #fff; outline-offset: calc(var(--u) * .8); }
+  .row { display: flex; gap: calc(var(--u) * 3); justify-content: center; }
+  .count { color: var(--dim); font-size: calc(var(--u) * 3.6); margin-top: calc(var(--u) * 3); }
+
+  /* Workout screen */
+  #workout { justify-content: space-between; padding-top: calc(var(--u) * 3); padding-bottom: calc(var(--u) * 3); }
+  .top { width: 100%; }
+  .meta { display: flex; justify-content: space-between; font-size: calc(var(--u) * 4); color: var(--dim); font-weight: 700; letter-spacing: .06em; }
+  .phase-label { font-weight: 800; }
+  .bar { height: calc(var(--u) * 1.2); background: #1c2629; border-radius: 99px; margin-top: calc(var(--u) * 1.5); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--work); border-radius: 99px; transition: width .25s linear; }
+
+  .mid { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; width: 100%; min-height: 0; }
+  .rest-word { font-size: calc(var(--u) * 15); font-weight: 900; letter-spacing: .08em; color: var(--rest); line-height: 1; margin-bottom: calc(var(--u) * 1.5); }
+  .rest-word.small { font-size: calc(var(--u) * 10); }
+  .next-tag { font-size: calc(var(--u) * 3.8); font-weight: 800; letter-spacing: .14em; color: var(--dim); margin-bottom: calc(var(--u) * .3); }
+  .fig { width: calc(var(--u) * 46); height: calc(var(--u) * 46); }
+  .fig line, .fig circle { stroke: currentColor; stroke-width: 6; stroke-linecap: round; fill: none; }
+  .fig .ground { stroke-width: 3; opacity: .45; }
+  .fig .poseA { animation: poseA 1.2s steps(1, end) infinite; }
+  .fig .poseB { animation: poseB 1.2s steps(1, end) infinite; }
+  @keyframes poseA { 0% { opacity: 1; } 50% { opacity: 0; } }
+  @keyframes poseB { 0% { opacity: 0; } 50% { opacity: 1; } }
+  .name { font-size: calc(var(--u) * 8.4); font-weight: 800; line-height: 1.05; margin-top: calc(var(--u) * 1); }
+  .cue { font-size: calc(var(--u) * 4); color: var(--dim); margin-top: calc(var(--u) * 1); }
+  .timer { font-size: calc(var(--u) * 20); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+
+  .controls { display: flex; gap: calc(var(--u) * 3); }
+  .controls button { font-size: calc(var(--u) * 4.2); padding: calc(var(--u) * 1.6) calc(var(--u) * 5); }
+
+  /* Phase colouring */
+  #workout.work  { color: var(--work); }
+  #workout.work .name, #workout.work .timer { color: var(--text); }
+  #workout.work .phase-label { color: var(--work); }
+  #workout.work .fig { color: var(--work); }
+  #workout.rest .phase-label, #workout.rest .timer { color: var(--rest); }
+  #workout.rest .bar > i { background: var(--rest); }
+  #workout.rest .fig { color: var(--rest); opacity: .7; width: calc(var(--u) * 22); height: calc(var(--u) * 22); }
+  #workout.rest .fig .poseA { animation: none; opacity: 1; }
+  #workout.rest .fig .poseB { display: none; }
+  #workout.rest .name { font-size: calc(var(--u) * 6); color: var(--dim); }
+  #workout.rest .timer { font-size: calc(var(--u) * 14); }
+  #workout.work.last3 .timer { animation: pulse .5s ease-in-out infinite alternate; color: var(--work); }
+  @keyframes pulse { from { opacity: 1; } to { opacity: .35; } }
+
+  /* Flashing 3-2-1 overlay at end of rest */
+  #flash {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    font-size: calc(var(--u) * 60); font-weight: 900; color: var(--rest); background: #000; z-index: 5;
+    font-variant-numeric: tabular-nums;
+  }
+  #flash { flex-direction: column; }
+  #flash.on { display: flex; }
+  #flash .digit { line-height: .9; animation: flash .5s steps(1, end) infinite; }
+  #flash .nx { font-size: calc(var(--u) * 6); color: var(--text); font-weight: 800; margin-top: calc(var(--u) * 2); }
+  #flash .nx span { color: var(--rest); letter-spacing: .12em; margin-right: calc(var(--u) * 2); }
+  @keyframes flash { 0% { opacity: 1; } 50% { opacity: .12; } }
+
+  /* Transition border flash */
+  #edge { position: absolute; inset: 0; border: calc(var(--u) * 2) solid transparent; pointer-events: none; z-index: 6; }
+  #edge.blink { animation: edge .6s ease-out 1; }
+  @keyframes edge { 0% { border-color: currentColor; } 100% { border-color: transparent; } }
+
+  /* Pause overlay */
+  #paused { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,.92); z-index: 7; gap: calc(var(--u) * 4); }
+  #paused.on { display: flex; }
+  #paused .big { font-size: calc(var(--u) * 13); font-weight: 900; color: var(--rest); }
+
+  /* Done */
+  #done h1 { font-size: calc(var(--u) * 13); }
+</style>
+</head>
+<body>
+
+<!-- 1. Start checklist -->
+<section id="start" class="screen active" aria-label="Start checklist">
+  <h1>HIIT 10</h1>
+  <div class="sub">10 standing moves · 40s work · 20s rest</div>
+  <ul class="check">
+    <li><span class="ico music">♪</span><span>Start Amazon Music on your phone
+      <small>or say "Hey Meta, play Amazon Music"</small></span></li>
+    <li><span class="ico">✓</span><span>Clear a little space around you</span></li>
+    <li><span class="ico">✓</span><span>Water within reach · glasses snug</span></li>
+  </ul>
+  <button id="btnStart" type="button">Start workout</button>
+  <div class="count" id="countLine"></div>
+</section>
+
+<!-- 2. Workout (work + rest share one screen) -->
+<section id="workout" class="screen work" aria-label="Workout">
+  <div class="top">
+    <div class="meta"><span class="phase-label" id="phaseLabel">WORK</span><span id="stepLabel">1 / 10</span></div>
+    <div class="bar"><i id="barFill"></i></div>
+  </div>
+  <div class="mid">
+    <div class="rest-word" id="restWord" hidden>REST</div>
+    <div class="next-tag" id="nextTag" hidden>UP NEXT</div>
+    <svg class="fig" id="fig" viewBox="0 0 200 200" aria-hidden="true"></svg>
+    <div class="name" id="moveName">Move</div>
+    <div class="cue" id="moveCue"></div>
+  </div>
+  <div class="timer" id="timer">40</div>
+  <div class="controls">
+    <button id="btnPause" type="button" class="ghost">Pause</button>
+    <button id="btnSkip" type="button" class="ghost">Skip</button>
+  </div>
+  <div id="flash" aria-live="assertive"></div>
+  <div id="edge"></div>
+  <div id="paused" role="dialog" aria-label="Paused">
+    <div class="big">PAUSED</div>
+    <div class="row">
+      <button id="btnResume" type="button">Resume</button>
+      <button id="btnEnd" type="button" class="ghost">End</button>
+    </div>
+  </div>
+</section>
+
+<!-- 3. Done -->
+<section id="done" class="screen" aria-label="Workout complete">
+  <h1>Done!</h1>
+  <div class="sub">10 moves · 10 minutes · great work</div>
+  <div class="row">
+    <button id="btnAgain" type="button">Go again</button>
+    <button id="btnHome" type="button" class="ghost">Home</button>
+  </div>
+  <div class="count" id="countLine2"></div>
+</section>
+
+<script>
+/* ===================== Settings ===================== */
+const WORK_S = 40, REST_S = 20, READY_S = 10;
+
+/* ===================== Stick-figure poses =====================
+   Joints in a 200x200 box: h=head centre, n=neck, p=hip,
+   le/lh = left elbow/hand, re/rh = right elbow/hand,
+   lk/lf = left knee/foot, rk/rf = right knee/foot. ("left" = viewer's left) */
+const STAND = { h:[100,38], n:[100,54], p:[100,110], le:[86,80], lh:[84,106], re:[114,80], rh:[116,106], lk:[93,148], lf:[91,188], rk:[107,148], rf:[109,188] };
+const P = (o) => Object.assign({}, STAND, o);
+const mirror = (pose) => {
+  const m = ([x, y]) => [200 - x, y];
+  return { h:m(pose.h), n:m(pose.n), p:m(pose.p),
+           le:m(pose.re), lh:m(pose.rh), re:m(pose.le), rh:m(pose.lh),
+           lk:m(pose.rk), lf:m(pose.rf), rk:m(pose.lk), rf:m(pose.lf) };
+};
+
+/* Side view (facing right): both legs/arms overlap when straight */
+const SIDE = { h:[100,38], n:[100,54], p:[100,110], le:[100,82], lh:[104,108], re:[100,82], rh:[104,108], lk:[100,150], lf:[100,188], rk:[100,150], rf:[100,188] };
+const S = (o) => Object.assign({}, SIDE, o);
+
+const marchA = S({ le:[88,82], lh:[80,98], re:[116,76], rh:[126,60], rk:[128,112], rf:[128,148] });
+const squatB = S({ h:[114,74], n:[108,88], p:[82,140], le:[128,92], lh:[150,92], re:[128,92], rh:[150,92], lk:[114,148], lf:[108,188], rk:[114,148], rf:[108,188] });
+const squatA = S({ le:[116,80], lh:[138,80], re:[116,80], rh:[138,80] });
+const lungeB = S({ h:[100,72], n:[100,88], p:[100,140], le:[88,112], lh:[96,134], re:[88,112], rh:[96,134], rk:[128,142], rf:[128,188], lk:[82,182], lf:[56,180] });
+const lungeA = S({ le:[88,82], lh:[96,104], re:[88,82], rh:[96,104] });
+const kneeXA = P({ le:[82,30], lh:[74,8], re:[118,30], rh:[126,8] });
+const kneeXB = P({ h:[92,42], n:[96,58], p:[100,112], le:[80,44], lh:[76,22], re:[112,84], rh:[100,68], lk:[110,98], lf:[100,134], rk:[104,150], rf:[106,188] });
+const raiseB = S({ h:[100,30], n:[100,46], p:[100,102], le:[114,30], lh:[120,6], re:[114,30], rh:[120,6], lk:[100,142], lf:[102,180], rk:[100,142], rf:[102,180] });
+const skate  = P({ h:[124,48], n:[120,64], p:[112,118], rk:[130,152], rf:[126,188], lk:[112,160], lf:[144,182], le:[106,84], lh:[88,100], re:[134,76], rh:[150,62] });
+const kickA  = S({ le:[88,82], lh:[82,98], re:[114,78], rh:[124,64], lk:[100,150], lf:[78,128] });
+const sideA  = P({ le:[70,42], lh:[92,32], re:[130,42], rh:[108,32] });
+const sideB  = P({ h:[110,42], n:[106,58], p:[100,112], le:[76,44], lh:[96,34], re:[130,94], rh:[114,48], rk:[132,108], rf:[128,146] });
+
+const MOVES = [
+  { name: "March in Place",       cue: "Drive knees up, pump your arms",               a: marchA, b: mirror(marchA) },
+  { name: "Bodyweight Squats",    cue: "Sit back, chest up, stand tall",               a: squatA, b: squatB },
+  { name: "Jab-Cross Punches",    cue: "Soft knees, punch and pull back",
+    a: P({ le:[74,60], lh:[46,60], re:[110,72], rh:[106,52], lf:[86,188], rf:[114,188] }),
+    b: P({ le:[90,72], lh:[94,52], re:[126,60], rh:[154,60], lf:[86,188], rf:[114,188] }) },
+  { name: "Reverse Lunges",       cue: "Step back, both knees bend, alternate",        a: lungeA, b: lungeB },
+  { name: "Cross Knee to Elbow",  cue: "Reach up, then elbow meets opposite knee",     a: kneeXA, b: kneeXB },
+  { name: "Step Jacks",           cue: "Step out wide, arms overhead",
+    a: STAND,
+    b: P({ le:[76,40], lh:[58,18], re:[124,40], rh:[142,18], rk:[124,150], rf:[140,188] }) },
+  { name: "Squat to Calf Raise",  cue: "Squat, stand, rise onto your toes",            a: squatB, b: raiseB },
+  { name: "Skater Steps",         cue: "Step side to side, swing your arms",           a: skate, b: mirror(skate) },
+  { name: "Butt Kicks",           cue: "Light jog, heels toward your seat",            a: kickA, b: mirror(kickA) },
+  { name: "Standing Side Crunch", cue: "Hands behind head, knee to elbow at the side", a: sideA, b: sideB },
+];
+
+function poseSVG(pose, cls) {
+  const L = (a, b) => `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`;
+  return `<g class="${cls}">
+    <circle cx="${pose.h[0]}" cy="${pose.h[1]}" r="12"/>
+    ${L(pose.n, pose.p)}
+    ${L(pose.n, pose.le)}${L(pose.le, pose.lh)}
+    ${L(pose.n, pose.re)}${L(pose.re, pose.rh)}
+    ${L(pose.p, pose.lk)}${L(pose.lk, pose.lf)}
+    ${L(pose.p, pose.rk)}${L(pose.rk, pose.rf)}
+  </g>`;
+}
+function drawMove(i) {
+  const m = MOVES[i];
+  document.getElementById('fig').innerHTML =
+    `<line class="ground" x1="30" y1="192" x2="170" y2="192"/>` + poseSVG(m.a, 'poseA') + poseSVG(m.b, 'poseB');
+}
+
+/* ===================== Phase plan =====================
+   Get-ready (shows NEXT: move 1) -> work 1 -> rest (NEXT: move 2) -> ... -> work 10 -> done */
+const PHASES = [{ type: 'rest', dur: READY_S, move: 0, ready: true }];
+MOVES.forEach((_, i) => {
+  PHASES.push({ type: 'work', dur: WORK_S, move: i });
+  if (i < MOVES.length - 1) PHASES.push({ type: 'rest', dur: REST_S, move: i + 1 });
+});
+
+/* ===================== State & timing ===================== */
+const $ = (id) => document.getElementById(id);
+let idx = 0, phaseStart = 0, pausedAt = 0, running = false, lastShown = -1, rafId = 0, wakeLock = null;
+
+function show(screenId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === screenId));
+}
+function focusFirst(screenId) {
+  const b = document.querySelector('#' + screenId + ' button');
+  if (b) b.focus();
+}
+
+function enterPhase(i) {
+  idx = i;
+  const ph = PHASES[i];
+  phaseStart = performance.now();
+  lastShown = -1;
+  const w = $('workout');
+  w.classList.toggle('work', ph.type === 'work');
+  w.classList.toggle('rest', ph.type === 'rest');
+  w.classList.remove('last3');
+  $('phaseLabel').textContent = ph.type === 'work' ? 'WORK' : (ph.ready ? 'GET READY' : 'REST');
+  $('stepLabel').textContent = `${ph.move + 1} / ${MOVES.length}`;
+  $('nextTag').hidden = ph.type !== 'rest';
+  $('restWord').hidden = ph.type !== 'rest';
+  $('restWord').textContent = ph.ready ? 'GET READY' : 'REST';
+  $('restWord').classList.toggle('small', !!ph.ready);
+  $('moveName').textContent = MOVES[ph.move].name;
+  $('moveCue').textContent = ph.type === 'work' ? MOVES[ph.move].cue : '';
+  drawMove(ph.move);
+  $('flash').classList.remove('on');
+  blinkEdge(ph.type === 'work' ? 'var(--work)' : 'var(--rest)');
+}
+
+function blinkEdge(color) {
+  const e = $('edge');
+  e.style.color = color;
+  e.classList.remove('blink'); void e.offsetWidth; e.classList.add('blink');
+}
+
+function tick() {
+  if (!running) return;
+  const ph = PHASES[idx];
+  const elapsed = (performance.now() - phaseStart) / 1000;
+  const left = Math.max(0, Math.ceil(ph.dur - elapsed));
+  if (left !== lastShown) {
+    lastShown = left;
+    $('timer').textContent = left;
+    $('barFill').style.width = (Math.min(1, elapsed / ph.dur) * 100) + '%';
+    const f = $('flash');
+    if (ph.type === 'rest' && left <= 3 && left > 0) {
+      f.innerHTML = `<div class="digit">${left}</div><div class="nx"><span>NEXT</span>${MOVES[ph.move].name}</div>`; f.classList.add('on');
+    } else {
+      f.classList.remove('on');
+    }
+    $('workout').classList.toggle('last3', ph.type === 'work' && left <= 3 && left > 0);
+  } else {
+    $('barFill').style.width = (Math.min(1, elapsed / ph.dur) * 100) + '%';
+  }
+  if (elapsed >= ph.dur) {
+    if (idx + 1 < PHASES.length) enterPhase(idx + 1);
+    else return finish();
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+async function keepAwake() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* not supported: fine */ }
+}
+function releaseAwake() { try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null; }
+
+function startWorkout() {
+  show('workout');
+  history.pushState({ screen: 'workout' }, '');
+  running = true;
+  $('paused').classList.remove('on');
+  enterPhase(0);
+  keepAwake();
+  cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(tick);
+  $('btnPause').focus();
+}
+
+function pause() {
+  if (!running) return;
+  running = false;
+  pausedAt = performance.now();
+  cancelAnimationFrame(rafId);
+  $('flash').classList.remove('on');
+  $('paused').classList.add('on');
+  $('btnResume').focus();
+}
+function resume() {
+  if (running) return;
+  phaseStart += performance.now() - pausedAt;
+  running = true;
+  lastShown = -1;
+  $('paused').classList.remove('on');
+  rafId = requestAnimationFrame(tick);
+  $('btnPause').focus();
+}
+function skip() {
+  if (idx + 1 < PHASES.length) { enterPhase(idx + 1); if (!running) resume(); }
+  else finish();
+}
+function stopToHome() {
+  running = false; cancelAnimationFrame(rafId); releaseAwake();
+  $('paused').classList.remove('on'); $('flash').classList.remove('on');
+  show('start'); refreshCount(); focusFirst('start');
+}
+function finish() {
+  running = false; cancelAnimationFrame(rafId); releaseAwake();
+  $('flash').classList.remove('on');
+  let n = 0;
+  try { n = (parseInt(localStorage.getItem('hiit10.done') || '0', 10) || 0) + 1; localStorage.setItem('hiit10.done', String(n)); } catch (e) {}
+  refreshCount();
+  show('done'); focusFirst('done');
+}
+function refreshCount() {
+  let n = 0;
+  try { n = parseInt(localStorage.getItem('hiit10.done') || '0', 10) || 0; } catch (e) {}
+  const txt = n ? `Workouts completed: ${n}` : '';
+  $('countLine').textContent = txt; $('countLine2').textContent = txt;
+}
+
+/* ===================== Wiring ===================== */
+$('btnStart').addEventListener('click', startWorkout);
+$('btnPause').addEventListener('click', pause);
+$('btnSkip').addEventListener('click', skip);
+$('btnResume').addEventListener('click', resume);
+$('btnEnd').addEventListener('click', () => { history.back(); });
+$('btnAgain').addEventListener('click', startWorkout);
+$('btnHome').addEventListener('click', () => { history.back(); });
+
+/* System Back (glasses back gesture) returns to the start screen */
+window.addEventListener('popstate', () => { stopToHome(); });
+
+/* If the page is hidden mid-workout, pause so time isn't lost */
+document.addEventListener('visibilitychange', () => { if (document.hidden && running) pause(); });
+
+refreshCount();
+focusFirst('start');
+</script>
+</body>
+</html>

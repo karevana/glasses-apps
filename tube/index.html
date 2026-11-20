@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Tube: search and watch YouTube videos on Meta Ray-Ban Display. Search by dictation or by asking Meta AI, pick one of five results, watch with simple controls.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Tube</title>
+<style>
+  /* Additive display: black = see-through. Bright text on black reads best. */
+  :root {
+    --accent: #ff5a5a;  /* warm red */
+    --text: #ffffff;
+    --dim: #9fb0b8;
+    --focus: #ffd84a;   /* yellow focus ring: easy to spot with the D-pad */
+    --u: min(1vw, 1vh); /* 600x600 => 6px */
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden; -webkit-user-select: none; user-select: none;
+  }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; padding: calc(var(--u) * 3.5); }
+  .screen.active { display: flex; }
+
+  button, input { font: inherit; color: inherit; }
+  button {
+    background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.5);
+    cursor: pointer;
+  }
+  button:focus, input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u) * .6) var(--focus); }
+
+  /* ---------- Home ---------- */
+  #home { justify-content: center; align-items: stretch; gap: calc(var(--u) * 3); }
+  .brand { text-align: center; font-size: calc(var(--u) * 10); font-weight: 800; color: var(--accent); letter-spacing: .02em; margin: 0; }
+  .brand small { display: block; font-size: calc(var(--u) * 4); font-weight: 400; color: var(--dim); letter-spacing: 0; }
+  #q {
+    width: 100%; background: #0d0d0d; border: calc(var(--u) * .5) solid #444; border-radius: calc(var(--u) * 2.5);
+    padding: calc(var(--u) * 3) calc(var(--u) * 3.5); font-size: calc(var(--u) * 5.2);
+  }
+  #q::placeholder { color: #7d8a90; }
+  #btnSearch { padding: calc(var(--u) * 3); font-size: calc(var(--u) * 5.2); font-weight: 700; background: #2a0d0d; border-color: var(--accent); }
+  .recentWrap[hidden] { display: none; }
+  .recentWrap { display: flex; flex-direction: column; gap: calc(var(--u) * 1.5); }
+  .label { color: var(--dim); font-size: calc(var(--u) * 3.6); }
+  #recent { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 1.5); }
+  #recent button { padding: calc(var(--u) * 1.6) calc(var(--u) * 2.6); font-size: calc(var(--u) * 4); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hint { color: var(--dim); font-size: calc(var(--u) * 3.6); text-align: center; line-height: 1.35; }
+  .hint b { color: var(--text); font-weight: 600; }
+
+  /* ---------- Results ---------- */
+  #results { gap: calc(var(--u) * 1.6); }
+  .bar { display: flex; align-items: center; gap: calc(var(--u) * 2); }
+  .bar .title { flex: 1; min-width: 0; font-size: calc(var(--u) * 4.2); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .title b { color: var(--text); }
+  .small-btn { padding: calc(var(--u) * 1.6) calc(var(--u) * 2.8); font-size: calc(var(--u) * 4); white-space: nowrap; }
+  #list { display: flex; flex-direction: column; gap: calc(var(--u) * 1.4); flex: 1; min-height: 0; }
+  .card {
+    display: flex; align-items: center; gap: calc(var(--u) * 2.2); text-align: left;
+    padding: calc(var(--u) * 1.2); height: calc(var(--u) * 15); flex: 0 0 auto;
+  }
+  .num { flex: 0 0 auto; width: calc(var(--u) * 6); text-align: center; font-size: calc(var(--u) * 6); font-weight: 800; color: var(--accent); }
+  .thumb { flex: 0 0 auto; width: calc(var(--u) * 21); height: calc(var(--u) * 11.8); border-radius: calc(var(--u) * 1.2); object-fit: cover; background: #222; }
+  .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(var(--u) * .6); }
+  .vt { font-size: calc(var(--u) * 3.9); line-height: 1.2; font-weight: 600;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .vc { font-size: calc(var(--u) * 3.3); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center;
+            font-size: calc(var(--u) * 5); color: var(--dim); padding: calc(var(--u) * 4); line-height: 1.35; }
+  .spinner { width: calc(var(--u) * 9); height: calc(var(--u) * 9); border-radius: 50%;
+             border: calc(var(--u) * 1) solid #333; border-top-color: var(--accent); animation: spin 0.9s linear infinite; margin: 0 auto calc(var(--u) * 3); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Player ---------- */
+  #player { padding: 0; }
+  #frameBox { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; flex: 0 0 auto; }
+  #frameBox iframe, #ytHost { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  /* The video never takes focus: the D-pad stays on our buttons. */
+  #frameBox iframe { pointer-events: none; }
+  #playerMsg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center;
+               padding: calc(var(--u) * 5); font-size: calc(var(--u) * 4.6); line-height: 1.35; background: #000; color: var(--text); }
+  #playerMsg.show { display: flex; }
+  .pinfo { padding: calc(var(--u) * 2.2) calc(var(--u) * 3.5) 0; }
+  #nowTitle { font-size: calc(var(--u) * 4.2); font-weight: 600; line-height: 1.2;
+              display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .prog { display: flex; align-items: center; gap: calc(var(--u) * 2); margin-top: calc(var(--u) * 1.6); font-size: calc(var(--u) * 3.4); color: var(--dim); font-variant-numeric: tabular-nums; }
+  .track { flex: 1; height: calc(var(--u) * 1); background: #333; border-radius: 99px; overflow: hidden; }
+  #fill { height: 100%; width: 0; background: var(--accent); }
+  .controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: calc(var(--u) * 1.5);
+              padding: calc(var(--u) * 2.4) calc(var(--u) * 3.5) calc(var(--u) * 3); margin-top: auto; }
+  .controls button { padding: calc(var(--u) * 2.4) 0; font-size: calc(var(--u) * 4); font-weight: 600; }
+  .controls button .ic { display: block; font-size: calc(var(--u) * 5.5); line-height: 1; margin-bottom: calc(var(--u) * .6); }
+  /* Sound button floats over the bottom of the video so the layout never grows. */
+  #btnSound { display: none; position: absolute; left: calc(var(--u) * 3.5); right: calc(var(--u) * 3.5); bottom: calc(var(--u) * 2.5);
+              padding: calc(var(--u) * 2); font-size: calc(var(--u) * 4.2); border-color: var(--accent); background: #1a0808; }
+  #btnSound.show { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ============ HOME / SEARCH ============ -->
+<section class="screen active" id="home" aria-label="Search">
+  <h1 class="brand">Tube<small>Search videos</small></h1>
+  <input id="q" type="search" enterkeyhint="search" autocomplete="off" placeholder="Pinch here, then speak or type" aria-label="Search videos">
+  <button id="btnSearch">Search</button>
+  <div class="recentWrap" id="recentWrap" hidden>
+    <div class="label">Recent</div>
+    <div id="recent"></div>
+  </div>
+  <div class="hint" id="voiceHint">Or ask Meta AI: <b>"search Tube for faucet repair"</b></div>
+</section>
+
+<!-- ============ RESULTS ============ -->
+<section class="screen" id="results" aria-label="Results">
+  <div class="bar">
+    <div class="title" id="resTitle"></div>
+    <button class="small-btn" id="btnNew">New search</button>
+  </div>
+  <div id="list"></div>
+</section>
+
+<!-- ============ PLAYER ============ -->
+<section class="screen" id="player" aria-label="Player">
+  <div id="frameBox">
+    <div id="ytHost"></div>
+    <div id="playerMsg"></div>
+    <button id="btnSound">Sound is off. Pinch to turn it on</button>
+  </div>
+  <div class="pinfo">
+    <div id="nowTitle"></div>
+    <div class="prog"><span id="tNow">0:00</span><div class="track"><div id="fill"></div></div><span id="tDur">0:00</span></div>
+  </div>
+  <div class="controls">
+    <button id="btnBack10"><span class="ic">&#x21BA;</span>10s</button>
+    <button id="btnPlay"><span class="ic" id="playIc">&#x275A;&#x275A;</span><span id="playTxt">Pause</span></button>
+    <button id="btnFwd10"><span class="ic">&#x21BB;</span>10s</button>
+    <button id="btnNext"><span class="ic">&#x23ED;</span>Next</button>
+    <button id="btnList"><span class="ic">&#x2630;</span>List</button>
+  </div>
+</section>
+
+<script>
+/* =====================================================================
+   Tube for Meta Ray-Ban Display
+   - Search runs on Karen's n8n (the YouTube key never reaches the glasses).
+   - Fully usable with swipe + pinch. Voice (WebMCP) is an optional extra.
+   ===================================================================== */
+const SEARCH_URL = 'https://n8n.rainandwind.ca/webhook/glasses-tube-search';  // search runs on Karen's n8n
+const MAX_SHOWN  = 5;
+const RECENT_KEY = 'tube.recent';
+
+const $ = id => document.getElementById(id);
+const state = { screen: 'home', query: '', results: [], current: -1 };
+let yt = null, ytReady = null, progTimer = 0, wakeLock = null, soundCheck = 0;
+
+/* ---------- small helpers ---------- */
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function fmt(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+}
+function loadRecent() { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch (e) { return []; } }
+function saveRecent(q) {
+  try {
+    const list = [q, ...loadRecent().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 4);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch (e) { /* storage unavailable: fine */ }
+}
+async function keepAwake() { try { if ('wakeLock' in navigator && !wakeLock) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {} }
+function releaseAwake() { try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null; }
+
+/* ---------- screens + Back button (browser history) ---------- */
+function show(name, focusId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === name));
+  state.screen = name;
+  const el = focusId && $(focusId);
+  if (el) setTimeout(() => el.focus(), 0);
+}
+function go(name, focusId) {            // forward navigation adds a history entry
+  if (state.screen !== name) history.pushState({ screen: name }, '');
+  show(name, focusId);
+}
+window.addEventListener('popstate', e => {
+  const target = (e.state && e.state.screen) || 'home';
+  if (state.screen === 'player' && target !== 'player') stopPlayer();
+  if (target === 'results' && state.results.length) show('results', 'card' + Math.max(0, state.current));
+  else if (target === 'player' && state.current >= 0) show('player', 'btnPlay');
+  else { show('home'); renderHome(); }
+});
+
+/* ---------- HOME ---------- */
+function renderHome() {
+  const r = loadRecent();
+  $('recentWrap').hidden = !r.length;
+  $('recent').innerHTML = r.map((q, i) => `<button data-q="${esc(q)}" id="recent${i}">${esc(q)}</button>`).join('');
+  $('recent').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { $('q').value = b.dataset.q; runSearch(b.dataset.q); }));
+  setTimeout(() => (r.length ? $('btnSearch') : $('q')).focus(), 0);
+}
+$('btnSearch').addEventListener('click', () => {
+  const q = $('q').value.trim();
+  if (q) runSearch(q); else $('q').focus();
+});
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('btnSearch').click(); } });
+$('q').addEventListener('change', () => { if ($('q').value.trim()) $('btnSearch').focus(); });
+$('btnNew').addEventListener('click', () => { $('q').value = ''; history.back(); });
+
+/* ---------- SEARCH ---------- */
+async function runSearch(q) {
+  q = String(q || '').trim();
+  if (!q) throw new Error('Nothing to search for.');
+  state.query = q; state.results = []; state.current = -1;
+  $('resTitle').innerHTML = `Results for <b>${esc(q)}</b>`;
+  $('list').innerHTML = `<div class="status"><div><div class="spinner"></div>Searching…</div></div>`;
+  if (state.screen === 'player') {        // new search while watching: swap player for results in history
+    stopPlayer(); history.replaceState({ screen: 'results' }, ''); show('results', 'btnNew');
+  } else go('results', 'btnNew');
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);   // stay inside Meta AI's 10-second limit
+  try {
+    const res = await fetch(`${SEARCH_URL}?q=${encodeURIComponent(q)}`, { signal: ctrl.signal, cache: 'no-store' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Search failed.');
+    state.results = (data.items || []).slice(0, MAX_SHOWN);
+    saveRecent(q);
+    renderResults();
+    return state.results;
+  } catch (err) {
+    const msg = err.name === 'AbortError' ? 'Search took too long. Try again.' : (err.message || 'Search failed.');
+    $('list').innerHTML = `<div class="status">${esc(msg)}</div>`;
+    setTimeout(() => $('btnNew').focus(), 0);
+    throw new Error(msg);
+  } finally { clearTimeout(t); }
+}
+
+function renderResults() {
+  if (!state.results.length) {
+    $('list').innerHTML = `<div class="status">No videos found. Try different words.</div>`;
+    $('btnNew').focus();
+    return;
+  }
+  $('list').innerHTML = state.results.map((v, i) => `
+    <button class="card" id="card${i}" data-i="${i}" aria-label="${i + 1}. ${esc(v.title)}, ${esc(v.channel)}, ${esc(v.duration)}">
+      <span class="num">${i + 1}</span>
+      <img class="thumb" src="${esc(v.thumb)}" alt="">
+      <span class="meta"><span class="vt">${esc(v.title)}</span><span class="vc">${esc(v.channel)} · ${esc(v.duration)}</span></span>
+    </button>`).join('');
+  $('list').querySelectorAll('.card').forEach(c => c.addEventListener('click', () => playIndex(+c.dataset.i)));
+  if (state.screen === 'results') $('card0').focus();
+}
+
+/* ---------- PLAYER (YouTube IFrame API, privacy-enhanced host) ---------- */
+function loadYT() {
+  if (ytReady) return ytReady;
+  ytReady = new Promise((resolve, reject) => {
+    if (window.YT && window.YT.Player) return resolve();
+    window.onYouTubeIframeAPIReady = () => resolve();
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    s.onerror = () => { ytReady = null; reject(new Error('Could not load the video player.')); };
+    document.head.appendChild(s);
+  });
+  return ytReady;
+}
+
+function playerMsg(text) { $('playerMsg').textContent = text || ''; $('playerMsg').classList.toggle('show', !!text); }
+
+async function playIndex(i) {
+  const v = state.results[i];
+  if (!v) throw new Error(`There is no result number ${i + 1}.`);
+  state.current = i;
+  $('nowTitle').textContent = v.title;
+  $('tNow').textContent = '0:00'; $('tDur').textContent = v.duration || '0:00'; $('fill').style.width = '0';
+  $('btnSound').classList.remove('show');
+  playerMsg('Loading…');
+  go('player', 'btnPlay');
+  keepAwake();
+
+  await loadYT();
+  if (yt && yt.loadVideoById) {
+    yt.loadVideoById(v.id);
+  } else {
+    yt = new YT.Player('ytHost', {
+      host: 'https://www.youtube-nocookie.com',
+      videoId: v.id,
+      playerVars: { autoplay: 1, playsinline: 1, controls: 0, rel: 0, fs: 0, disablekb: 1, iv_load_policy: 3, origin: location.origin },
+      events: {
+        onReady: e => { const f = e.target.getIframe(); f.setAttribute('tabindex', '-1'); e.target.playVideo(); },
+        onStateChange: onYTState,
+        onError: onYTError
+      }
+    });
+  }
+  startProgress();
+  // If the glasses block sound autoplay, play muted and offer a Sound button.
+  clearTimeout(soundCheck);
+  soundCheck = setTimeout(() => {
+    if (!yt || !yt.getPlayerState) return;
+    if (yt.getPlayerState() !== YT.PlayerState.PLAYING) { yt.mute(); yt.playVideo(); $('btnSound').classList.add('show'); }
+  }, 2500);
+  return v;
+}
+
+function onYTState(e) {
+  const S = YT.PlayerState;
+  if (e.data === S.PLAYING) { playerMsg(''); setPlayBtn(true); keepAwake(); if (yt.isMuted && yt.isMuted()) $('btnSound').classList.add('show'); }
+  if (e.data === S.PAUSED) setPlayBtn(false);
+  if (e.data === S.ENDED) { setPlayBtn(false); playerMsg('Finished. Pinch Next, or List to choose another.'); releaseAwake(); $('btnNext').focus(); }
+}
+function onYTError(e) {
+  const m = { 2: 'That video link is not valid.', 5: 'This video cannot play here.', 100: 'This video was removed or is private.', 101: 'The owner does not allow this video outside YouTube.', 150: 'The owner does not allow this video outside YouTube.' };
+  playerMsg((m[e.data] || 'This video cannot play.') + ' Pinch Next or List.');
+  $('btnNext').focus();
+}
+function setPlayBtn(playing) {
+  $('playIc').innerHTML = playing ? '&#x275A;&#x275A;' : '&#x25B6;';
+  $('playTxt').textContent = playing ? 'Pause' : 'Play';
+}
+function startProgress() {
+  clearInterval(progTimer);
+  progTimer = setInterval(() => {
+    if (!yt || !yt.getCurrentTime) return;
+    const t = yt.getCurrentTime() || 0, d = yt.getDuration() || 0;
+    $('tNow').textContent = fmt(t);
+    if (d) { $('tDur').textContent = fmt(d); $('fill').style.width = `${Math.min(100, (t / d) * 100)}%`; }
+  }, 500);
+}
+function stopPlayer() {
+  clearInterval(progTimer); clearTimeout(soundCheck); releaseAwake();
+  try { yt && yt.stopVideo && yt.stopVideo(); } catch (e) {}
+}
+function isPlaying() { return yt && yt.getPlayerState && yt.getPlayerState() === YT.PlayerState.PLAYING; }
+function pause()  { if (yt && yt.pauseVideo) yt.pauseVideo(); setPlayBtn(false); }
+function resume() { if (yt && yt.playVideo) yt.playVideo(); setPlayBtn(true); }
+function skip(sec) {
+  if (!yt || !yt.getCurrentTime) return;
+  const d = yt.getDuration() || Infinity;
+  yt.seekTo(Math.max(0, Math.min(d - 1, yt.getCurrentTime() + sec)), true);
+}
+function nextVideo() {
+  if (!state.results.length) throw new Error('There are no results to move through.');
+  return playIndex((state.current + 1) % state.results.length);
+}
+
+$('btnPlay').addEventListener('click', () => (isPlaying() ? pause() : resume()));
+$('btnBack10').addEventListener('click', () => skip(-10));
+$('btnFwd10').addEventListener('click', () => skip(10));
+$('btnNext').addEventListener('click', () => nextVideo());
+$('btnList').addEventListener('click', () => history.back());
+$('btnSound').addEventListener('click', () => { if (yt) { yt.unMute(); yt.setVolume(100); yt.playVideo(); } $('btnSound').classList.remove('show'); $('btnPlay').focus(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && state.screen === 'player') pause(); });
+
+/* =====================================================================
+   Voice control (WebMCP). Meta AI calls these tools when the wearer asks.
+   Progressive enhancement: if the glasses don't offer it, nothing changes.
+   ===================================================================== */
+const reply = text => ({ content: [{ type: 'text', text }] });
+const listText = () => state.results.map((v, i) => `${i + 1}. ${v.title} (${v.channel}, ${v.duration})`).join('\n');
+
+const TOOLS = [
+  {
+    name: 'search_videos',
+    description: 'Search YouTube in the Tube app and show up to 5 results on the glasses. Use when the wearer asks to find, search for, or look up videos.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'What to search for, e.g. "fix a leaky faucet"' } }, required: ['query'] },
+    execute: async ({ query }) => {
+      try {
+        $('q').value = query;
+        const r = await runSearch(query);
+        return reply(r.length ? `Showing ${r.length} results for "${query}":\n${listText()}\nAsk which number to play.` : `No videos found for "${query}".`);
+      } catch (e) { return reply(`Search failed: ${e.message}`); }
+    }
+  },
+  {
+    name: 'play_result',
+    description: 'Play one of the search results shown in the Tube app, by its number (1 to 5).',
+    inputSchema: { type: 'object', properties: { number: { type: 'integer', description: 'Result number shown on screen, 1 to 5' } }, required: ['number'] },
+    execute: async ({ number }) => {
+      try { const v = await playIndex(Number(number) - 1); return reply(`Playing number ${number}: ${v.title}.`); }
+      catch (e) { return reply(e.message + (state.results.length ? ` There are ${state.results.length} results.` : ' Search first.')); }
+    }
+  },
+  {
+    name: 'pause_video',
+    description: 'Pause the video playing in the Tube app.',
+    inputSchema: { type: 'object', properties: {} },
+    execute: async () => { if (state.screen !== 'player') return reply('No video is open.'); pause(); return reply('Paused.'); }
+  },
+  {
+    name: 'resume_video',
+    description: 'Resume or play the paused video in the Tube app.',
+    inputSchema: { type: 'object', properties: {} },
+    execute: async () => { if (state.screen !== 'player') return reply('No video is open.'); resume(); return reply('Playing.'); }
+  },
+  {
+    name: 'skip_seconds',
+    description: 'Jump forward or back in the current video. Positive seconds go forward, negative go back.',
+    inputSchema: { type: 'object', properties: { seconds: { type: 'integer', description: 'Seconds to jump, e.g. 30 or -10' } }, required: ['seconds'] },
+    execute: async ({ seconds }) => { if (state.screen !== 'player') return reply('No video is open.'); skip(Number(seconds) || 0); return reply(`Jumped ${seconds} seconds.`); }
+  },
+  {
+    name: 'next_video',
+    description: 'Play the next result in the Tube app list.',
+    inputSchema: { type: 'object', properties: {} },
+    execute: async () => { try { const v = await nextVideo(); return reply(`Playing: ${v.title}.`); } catch (e) { return reply(e.message); } }
+  },
+  {
+    name: 'stop_video',
+    description: 'Stop the video and go back to the results list in the Tube app.',
+    inputSchema: { type: 'object', properties: {} },
+    execute: async () => { if (state.screen === 'player') history.back(); return reply('Stopped. Back to the results.'); }
+  }
+];
+
+(function registerVoiceTools() {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || typeof mc.registerTool !== 'function') return;  // normal browser: skip quietly
+  for (const t of TOOLS) {
+    try { const p = mc.registerTool(t); if (p && p.catch) p.catch(() => {}); } catch (e) { /* one tool failing must not break the app */ }
+  }
+  window.__tubeVoice = true;
+})();
+
+/* ---------- start ---------- */
+history.replaceState({ screen: 'home' }, '');
+renderHome();
+</script>
+</body>
+</html>
