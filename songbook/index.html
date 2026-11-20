@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Songbook: chords over lyrics that scroll at the song's tempo on Meta Ray-Ban Display. Tilt your head to move ahead or back while you play.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Songbook</title>
+<style>
+  /* Additive display: black = see-through. Amber chords, white lyrics. */
+  :root {
+    --chord: #ffb21e; --text: #ffffff; --dim: #9fb0b8; --mint: #3df5c8; --focus: #ffd84a;
+    --u: min(1vw, 1vh);   /* 600x600 => 6px */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text); overflow: hidden;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; }
+  .screen.active { display: flex; }
+  button { font: inherit; color: inherit; background: #111; border: calc(var(--u)*.5) solid #333;
+    border-radius: calc(var(--u)*2.4); cursor: pointer; }
+  button:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u)*.6) var(--focus); }
+  .center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    gap: calc(var(--u)*3); padding: calc(var(--u)*5); }
+  .msg { font-size: calc(var(--u)*4.8); line-height: 1.35; }
+  .dim { color: var(--dim); font-size: calc(var(--u)*3.8); }
+
+  /* ---------- Song list ---------- */
+  #list { padding: calc(var(--u)*3.5); gap: calc(var(--u)*2); }
+  .top { display: flex; align-items: center; gap: calc(var(--u)*2); }
+  .top h1 { flex: 1; margin: 0; font-size: calc(var(--u)*7); color: var(--chord); }
+  .small { padding: calc(var(--u)*1.6) calc(var(--u)*2.6); font-size: calc(var(--u)*3.8); white-space: nowrap; }
+  #songs { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: calc(var(--u)*1.6); padding: calc(var(--u)*1); scrollbar-width: none; }
+  #songs::-webkit-scrollbar { display: none; }
+  .song { text-align: left; padding: calc(var(--u)*2.6) calc(var(--u)*3.2); font-size: calc(var(--u)*5); font-weight: 600; flex: 0 0 auto; }
+
+  /* ---------- Player ---------- */
+  #play .bar { display: flex; align-items: center; gap: calc(var(--u)*2); padding: calc(var(--u)*2) calc(var(--u)*3.5) calc(var(--u)*1);
+    font-size: calc(var(--u)*3.6); color: var(--dim); }
+  #play .bar .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: 600; }
+  #beat { width: calc(var(--u)*3.2); height: calc(var(--u)*3.2); border-radius: 50%; background: #333; flex: 0 0 auto; }
+  #beat.on { background: var(--mint); }
+  #beat.one { background: var(--chord); }
+  .prog { height: calc(var(--u)*.8); margin: 0 calc(var(--u)*3.5); background: #222; border-radius: 99px; overflow: hidden; }
+  #fill { height: 100%; width: 0; background: var(--mint); }
+  #view { position: relative; flex: 1; overflow: hidden; }
+  #lines { position: absolute; left: 0; right: 0; top: 0; padding: 0 calc(var(--u)*3.5); transition: transform .45s ease; }
+  .unit { padding: calc(var(--u)*1.4) 0; opacity: .7; transition: opacity .3s; }
+  .unit.past { opacity: .28; }
+  .unit.cur { opacity: 1; }
+  .label { font-size: calc(var(--u)*3.4); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; margin-bottom: calc(var(--u)*.6); }
+  .unit.cur .label { color: var(--mint); }
+  .ln { line-height: 1.05; }
+  .w { display: inline-flex; flex-direction: column; vertical-align: bottom; }
+  .c { color: var(--chord); font-weight: 800; font-size: calc(var(--u)*4.6); min-height: 1.15em; padding-right: .25em; white-space: pre; }
+  .l { font-size: calc(var(--u)*5.4); white-space: pre; }
+  .ln.nochords .c { display: none; }
+  .chordsonly .c { font-size: calc(var(--u)*5.6); padding-right: .9em; }
+  .tab { font-family: ui-monospace, Menlo, Consolas, monospace; white-space: pre; line-height: 1.15; color: var(--text); }
+  .end { text-align: center; color: var(--dim); font-size: calc(var(--u)*4.4); padding: calc(var(--u)*6) 0 60vh; }
+  #count { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
+    background: rgba(0,0,0,.85); font-size: calc(var(--u)*30); font-weight: 800; color: var(--chord); }
+  #count.show { display: flex; }
+  #count small { font-size: calc(var(--u)*4.2); color: var(--dim); font-weight: 400; }
+  #nudge { position: absolute; top: calc(var(--u)*2); right: calc(var(--u)*3.5); font-size: calc(var(--u)*6); font-weight: 800;
+    color: var(--mint); opacity: 0; transition: opacity .4s; pointer-events: none; }
+  #nudge.on { opacity: 1; transition: none; }
+  .controls { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: calc(var(--u)*1.5);
+    padding: calc(var(--u)*1.6) calc(var(--u)*3.5) calc(var(--u)*2.6); }
+  .controls button { padding: calc(var(--u)*2.2) 0; font-size: calc(var(--u)*4); font-weight: 700; }
+
+  /* ---------- Tilt setup ---------- */
+  .big { font-size: calc(var(--u)*14); font-weight: 800; }
+</style>
+</head>
+<body>
+
+<!-- ============ SONG LIST ============ -->
+<section class="screen active" id="list" aria-label="Songs">
+  <div class="top"><h1>Songbook</h1><button class="small" id="bTilt">Head tilt</button><button class="small" id="bRefresh">Refresh</button></div>
+  <div id="songs"><div class="center"><div class="msg">Loading songs…</div></div></div>
+</section>
+
+<!-- ============ PLAYER ============ -->
+<section class="screen" id="play" aria-label="Song">
+  <div class="bar"><span id="beat"></span><span class="t" id="pTitle"></span><span id="pInfo"></span></div>
+  <div class="prog"><div id="fill"></div></div>
+  <div id="view"><div id="lines"></div><div id="count"></div><div id="nudge"></div></div>
+  <div class="controls">
+    <button id="bGo">Start</button>
+    <button id="bSlower">Slower</button>
+    <button id="bFaster">Faster</button>
+    <button id="bRestart">Restart</button>
+  </div>
+</section>
+
+<!-- ============ TILT SETUP ============ -->
+<section class="screen" id="tilt" aria-label="Head tilt setup">
+  <div class="center">
+    <div class="msg" id="tMsg">Set up head tilt: tilt right = next line, tilt left = back a line.</div>
+    <div class="big" id="tBig"></div>
+    <button id="bTiltGo">Begin</button>
+    <div class="dim" id="tNote"></div>
+  </div>
+</section>
+
+<script>
+/* =====================================================================
+   Songbook for Meta Ray-Ban Display
+   - Songs are Google Docs in Karen's Drive > Songbook, served by n8n
+     (private key in the app address: ...?k=KEY, remembered after first open).
+   - Understands Ultimate-Guitar-style "chords above lyrics", [Verse] labels,
+     tab blocks, and inline ChordPro [G]chords.
+   - A top line like "BPM 92, 4/4, capo 2, bars 2" sets the timing.
+   - Scrolls one line at a time at that tempo. Head tilt right = next line,
+     left = back a line. Fully usable with swipe + pinch.
+   ===================================================================== */
+const API = 'https://n8n.rainandwind.ca/webhook/glasses-songbook';
+const LS = { key: 'songbook.key', tilt: 'songbook.tilt', list: 'songbook.list', song: id => 'songbook.song.' + id, speed: id => 'songbook.speed.' + id };
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ---------- private key from the address (?k=...) ---------- */
+(function keyFromUrl() {
+  const k = new URLSearchParams(location.search).get('k');
+  if (k) store.set(LS.key, k);
+})();
+const KEY = () => store.get(LS.key, '');
+
+/* =====================================================================
+   PARSER: text -> { meta, units[] }
+   unit = { kind: 'pair'|'chords'|'lyric'|'tab', label?, segs?, lines?, bars }
+   ===================================================================== */
+const CHORD_RE = /^\(?[A-G](#|b)?(maj|min|m|M|dim|aug|sus|add)?\d*((maj|sus|add|b|#|\+|-|°|ø)?\d+)*(\([^)]*\))?(\/[A-G](#|b)?)?\)?\*?$/;
+const DECOR_RE = /^(\||\|\||-+|x\d+|\(x\d+\)|%|\/|N\.?C\.?|\.\.+|:\|?|\|:)$/i;
+const isChordTok = t => CHORD_RE.test(t);
+function isChordLine(s) {
+  const toks = s.trim().split(/\s+/).filter(Boolean);
+  if (!toks.length) return false;
+  let chords = 0;
+  for (const t of toks) { if (isChordTok(t)) chords++; else if (!DECOR_RE.test(t)) return false; }
+  return chords > 0;
+}
+const LABEL_RE = /^\s*\[([^\]]{1,40})\]\s*$/;
+const WORD_LABEL_RE = /^\s*(intro|verse|chorus|pre-?chorus|bridge|outro|solo|interlude|instrumental|refrain|tag|coda|ending)\b[^:]{0,20}:?\s*$/i;
+const TAB_RE = /^\s*[a-gA-G]?[#b]?\s*\|[-0-9hpbrsvx~\/\\|()^. ]{3,}$/;
+const META_RE = /^\s*(tuning|key|capo|bpm|tempo|difficulty|author|time|bars|strumming)\b\s*[:=]?/i;
+
+function parseMeta(lines) {
+  const meta = { bpm: 0, beats: 4, capo: 0, bars: 2, key: '' };
+  const keep = [];
+  lines.forEach((ln, i) => {
+    const s = ln.trim();
+    const headerish = i < 12 && /(\bbpm\b|\btempo\b|\bcapo\b|\bbars?\s*[:=]?\s*\d|\b[2-7]\/[48]\b)/i.test(s) && s.length < 70 && !isChordLine(s);
+    if (headerish || META_RE.test(s)) {
+      let m;
+      if ((m = s.match(/(\d{2,3})\s*bpm|bpm\s*[:=]?\s*(\d{2,3})|tempo\s*[:=]?\s*(\d{2,3})/i))) meta.bpm = +(m[1] || m[2] || m[3]);
+      if ((m = s.match(/capo\s*[:=]?\s*(\d{1,2})/i))) meta.capo = +m[1];
+      if ((m = s.match(/\b([2-7])\/(4|8)\b/))) meta.beats = +m[1];
+      if ((m = s.match(/\bbars?\s*[:=]?\s*(\d+(\.\d+)?)/i))) meta.bars = +m[1];
+      if ((m = s.match(/^\s*key\s*[:=]?\s*([A-G][#b]?m?)/i))) meta.key = m[1];
+      return;   // header lines are not shown
+    }
+    keep.push(ln);
+  });
+  return { meta, lines: keep };
+}
+
+// Chord line + lyric line -> word units, each carrying the chord that sits over it.
+function pairSegs(chordLine, lyric) {
+  const chords = [];
+  chordLine.replace(/\S+/g, (tok, pos) => { if (isChordTok(tok)) chords.push({ tok, pos }); return tok; });
+  const width = Math.max(lyric.length, chordLine.length);
+  lyric = lyric.padEnd(width, ' ');
+  // A chord that lands mid-word moves to the start of that word, so words never split.
+  const taken = new Set(chords.map(c => c.pos));
+  for (const c of chords) {
+    let p = c.pos;
+    while (p > 0 && lyric[p - 1] !== ' ' && lyric[p] !== ' ') p--;
+    if (p !== c.pos && !taken.has(p)) { taken.delete(c.pos); taken.add(p); c.pos = p; }
+  }
+  chords.sort((a, b) => a.pos - b.pos);
+  const cuts = [0, ...chords.map(c => c.pos), width].filter((v, i, a) => i === 0 || v > a[i - 1]);
+  const segs = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const from = cuts[i], to = cuts[i + 1];
+    const chord = (chords.find(c => c.pos === from) || {}).tok || '';
+    splitWords(lyric.slice(from, to)).forEach((w, j) => segs.push({ c: j === 0 ? chord : '', l: w }));
+  }
+  // trim trailing empty padding
+  while (segs.length && !segs[segs.length - 1].c && !segs[segs.length - 1].l.trim()) segs.pop();
+  return segs;
+}
+// Keep spaces attached to the word before them so wrapping only happens between words.
+function splitWords(s) { const out = s.match(/\S*\s*/g).filter(Boolean); return out.length ? out : ['']; }
+
+// Inline ChordPro: "Take me [G]home, country [C]roads"
+function chordProSegs(s) {
+  const segs = []; let chord = ''; let last = 0;
+  s.replace(/\[([^\]]+)\]/g, (m, c, pos) => {
+    splitWords(s.slice(last, pos)).forEach((w, j) => segs.push({ c: j === 0 ? chord : '', l: w }));
+    chord = c; last = pos + m.length; return m;
+  });
+  splitWords(s.slice(last)).forEach((w, j) => segs.push({ c: j === 0 ? chord : '', l: w }));
+  return segs.filter(x => x.c || x.l);
+}
+
+function parseSong(text) {
+  const raw = text.replace(/\t/g, '    ').split('\n').map(l => l.replace(/\s+$/, ''));
+  const { meta, lines } = parseMeta(raw);
+  const units = []; let label = '';
+  const push = u => { if (label) { u.label = label; label = ''; } units.push(u); };
+  for (let i = 0; i < lines.length; i++) {
+    const s = lines[i];
+    if (!s.trim()) continue;
+    let m;
+    if ((m = s.match(LABEL_RE)) && !isChordTok(m[1].trim())) { label = m[1].trim(); continue; }
+    if (WORD_LABEL_RE.test(s) && !isChordLine(s)) { label = s.trim().replace(/:$/, ''); continue; }
+    if (TAB_RE.test(s)) {
+      const block = [s];
+      while (i + 1 < lines.length && TAB_RE.test(lines[i + 1])) block.push(lines[++i]);
+      push({ kind: 'tab', lines: block, bars: Math.max(meta.bars, 2) });
+      continue;
+    }
+    if (isChordLine(s)) {
+      const nxt = lines[i + 1];
+      if (nxt && nxt.trim() && !isChordLine(nxt) && !TAB_RE.test(nxt) && !LABEL_RE.test(nxt) && !WORD_LABEL_RE.test(nxt)) {
+        push({ kind: 'pair', segs: pairSegs(s, nxt), bars: meta.bars }); i++;
+      } else {
+        const n = s.trim().split(/\s+/).filter(isChordTok).length;
+        push({ kind: 'chords', segs: s.trim().split(/\s+/).map(t => ({ c: t, l: '' })), bars: Math.min(8, Math.max(1, n)) });
+      }
+      continue;
+    }
+    if (/\[[A-G][^\]]{0,8}\]/.test(s)) { push({ kind: 'pair', segs: chordProSegs(s), bars: meta.bars }); continue; }
+    push({ kind: 'lyric', segs: splitWords(s).map(w => ({ c: '', l: w })), bars: meta.bars });
+  }
+  return { meta, units };
+}
+
+/* =====================================================================
+   SONG LIST
+   ===================================================================== */
+let songList = store.get(LS.list, []);
+function show(id, focusId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  if (focusId) setTimeout(() => { const el = $(focusId); el && el.focus(); }, 0);
+}
+async function api(params) {
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 9000);
+  try {
+    const q = new URLSearchParams({ k: KEY(), ...params });
+    const r = await fetch(`${API}?${q}`, { signal: ctrl.signal, cache: 'no-store' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'The songbook server said no.');
+    return d;
+  } finally { clearTimeout(t); }
+}
+function renderList(note) {
+  const box = $('songs');
+  if (!songList.length) {
+    box.innerHTML = `<div class="center"><div class="msg">${esc(note || 'No songs yet.')}</div>
+      <div class="dim">Add a Google Doc to Drive › Songbook, then pinch Refresh.</div></div>`;
+    setTimeout(() => $('bRefresh').focus(), 0); return;
+  }
+  box.innerHTML = (note ? `<div class="dim">${esc(note)}</div>` : '') +
+    songList.map((s, i) => `<button class="song" id="song${i}" data-i="${i}">${esc(s.title)}</button>`).join('');
+  box.querySelectorAll('.song').forEach(b => b.addEventListener('click', () => openSong(songList[+b.dataset.i])));
+  setTimeout(() => $('song0').focus(), 0);
+}
+async function loadList() {
+  if (!KEY()) { $('songs').innerHTML = `<div class="center"><div class="msg">This copy of Songbook has no key.</div><div class="dim">Add it on the glasses using the full address that ends in ?k=…</div></div>`; return; }
+  $('songs').innerHTML = `<div class="center"><div class="msg">Loading songs…</div></div>`;
+  try { const d = await api({}); songList = d.songs || []; store.set(LS.list, songList); renderList(); }
+  catch (e) { renderList(songList.length ? 'Offline: showing saved list.' : 'Could not reach the songbook. ' + (e.name === 'AbortError' ? 'It took too long.' : e.message)); }
+}
+$('bRefresh').addEventListener('click', loadList);
+
+/* =====================================================================
+   PLAYER
+   ===================================================================== */
+const P = { song: null, meta: null, units: [], idx: 0, state: 'idle', speed: 1, unitStart: 0, pausedLeft: 0, raf: 0, beatT: 0, beatN: 0, wake: null };
+
+async function openSong(s) {
+  history.pushState({ screen: 'play' }, '');
+  P.song = s; $('pTitle').textContent = s.title; $('pInfo').textContent = '';
+  $('lines').innerHTML = `<div class="end" style="padding-top:20vh">Loading…</div>`;
+  show('play');
+  let text = null, note = '';
+  try { text = (await api({ id: s.id })).text; store.set(LS.song(s.id), text); }
+  catch (e) { text = store.get(LS.song(s.id), null); note = text ? ' (offline copy)' : ''; if (!text) { $('lines').innerHTML = `<div class="end" style="padding-top:15vh">Could not load this song.<br>${esc(e.message)}</div>`; return; } }
+  const parsed = parseSong(text);
+  P.meta = parsed.meta; P.units = parsed.units; P.idx = 0; P.state = 'ready';
+  P.speed = store.get(LS.speed(s.id), 1);
+  renderUnits(); updateInfo(note); place(); setGo('Start');
+  $('fill').style.width = '0';
+  setTimeout(() => $('bGo').focus(), 0);
+}
+function bpm() { return Math.round((P.meta.bpm || 80) * P.speed); }
+function unitMs(u) { return u.bars * P.meta.beats * 60000 / bpm(); }
+function updateInfo(extra = '') {
+  const m = P.meta;
+  $('pInfo').textContent = `${bpm()} bpm${m.bpm ? '' : '?'} · ${m.beats}/4${m.capo ? ' · capo ' + m.capo : ''}${extra}`;
+}
+function segHTML(segs, cls) {
+  return `<div class="ln ${cls}">` + segs.map(s => `<span class="w"><span class="c">${esc(s.c)}</span><span class="l">${esc(s.l)}</span></span>`).join('') + '</div>';
+}
+function renderUnits() {
+  const html = P.units.map((u, i) => {
+    let body;
+    if (u.kind === 'tab') body = `<div class="tab" data-tab>${esc(u.lines.join('\n'))}</div>`;
+    else if (u.kind === 'chords') body = segHTML(u.segs, 'chordsonly');
+    else if (u.kind === 'lyric') body = segHTML(u.segs, 'nochords');
+    else body = segHTML(u.segs, '');
+    return `<div class="unit" id="u${i}">${u.label ? `<div class="label">${esc(u.label)}</div>` : ''}${body}</div>`;
+  }).join('') + `<div class="end">End of song</div>`;
+  $('lines').innerHTML = html;
+  // Tab blocks: shrink the font so the widest line fits the display.
+  const w = $('lines').clientWidth - 2;
+  document.querySelectorAll('[data-tab]').forEach(el => {
+    const longest = Math.max(...el.textContent.split('\n').map(l => l.length));
+    el.style.fontSize = Math.max(9, Math.min(26, w / (longest * 0.62))) + 'px';
+  });
+}
+// Put the current line about a quarter of the way down the screen.
+function place() {
+  P.units.forEach((u, i) => { const el = $('u' + i); el.classList.toggle('cur', i === P.idx); el.classList.toggle('past', i < P.idx); });
+  const cur = $('u' + Math.min(P.idx, P.units.length - 1));
+  if (!cur) return;
+  const target = $('view').clientHeight * 0.22;
+  $('lines').style.transform = `translateY(${Math.round(target - cur.offsetTop)}px)`;
+}
+function setGo(t) { $('bGo').textContent = t; }
+
+/* ---------- timing loop ---------- */
+function startUnit(now) { P.unitStart = now; }
+function tick(now) {
+  if (P.state !== 'playing') return;
+  const u = P.units[P.idx];
+  if (!u) { finish(); return; }
+  const dur = unitMs(u), el = now - P.unitStart;
+  $('fill').style.width = Math.min(100, (el / dur) * 100) + '%';
+  // beat dot
+  const beatMs = 60000 / bpm();
+  const b = Math.floor(el / beatMs);
+  if (b !== P.beatN) { P.beatN = b; pulse(b % P.meta.beats === 0); }
+  if (el >= dur) { go(1, true); }
+  P.raf = requestAnimationFrame(tick);
+}
+function pulse(one) { const d = $('beat'); d.className = one ? 'one' : 'on'; setTimeout(() => d.className = '', 120); }
+function go(step, auto) {
+  const n = Math.max(0, Math.min(P.units.length, P.idx + step));
+  if (n === P.idx && !auto) return;
+  P.idx = n; P.beatN = -1;
+  if (P.idx >= P.units.length) { place(); finish(); return; }
+  place(); startUnit(performance.now());
+  if (P.state !== 'playing') { P.pausedLeft = 0; $('fill').style.width = '0'; }
+}
+function finish() {
+  P.state = 'done'; cancelAnimationFrame(P.raf); $('fill').style.width = '100%';
+  setGo('Again'); releaseAwake(); setTimeout(() => $('bGo').focus(), 0);
+}
+async function countIn() {
+  P.state = 'count'; const box = $('count'); box.classList.add('show');
+  const beatMs = 60000 / bpm();
+  const samples = [];
+  for (let b = 1; b <= P.meta.beats; b++) {
+    box.innerHTML = `${b}<small>${b === 1 ? 'hold your head level' : ''}</small>`; pulse(b === 1);
+    const end = performance.now() + beatMs;
+    while (performance.now() < end) { if (lastOri) samples.push({ ...lastOri }); await new Promise(r => setTimeout(r, 30)); if (P.state !== 'count') { box.classList.remove('show'); return false; } }
+  }
+  box.classList.remove('show');
+  if (samples.length > 5) tiltBase = circMean(samples);   // re-level the tilt every time a song starts
+  return true;
+}
+async function play() {
+  if (P.state === 'ready' || P.state === 'done') {
+    if (P.state === 'done') { P.idx = 0; place(); }
+    keepAwake(); setGo('Pause');
+    if (!(await countIn())) return;
+    P.state = 'playing'; P.beatN = -1; startUnit(performance.now()); P.raf = requestAnimationFrame(tick);
+  } else if (P.state === 'paused') {
+    P.state = 'playing'; setGo('Pause'); keepAwake();
+    P.unitStart = performance.now() - P.pausedLeft; P.raf = requestAnimationFrame(tick);
+  }
+}
+function pause() {
+  if (P.state === 'count') { P.state = 'ready'; setGo('Start'); return; }
+  if (P.state !== 'playing') return;
+  P.state = 'paused'; P.pausedLeft = performance.now() - P.unitStart; cancelAnimationFrame(P.raf); setGo('Play');
+}
+function restart() { cancelAnimationFrame(P.raf); P.state = 'ready'; P.idx = 0; P.beatN = -1; place(); $('fill').style.width = '0'; setGo('Start'); $('bGo').focus(); }
+function changeSpeed(f) {
+  const before = unitMs(P.units[P.idx] || { bars: 1 });
+  P.speed = Math.max(0.5, Math.min(1.6, +(P.speed * f).toFixed(3)));
+  store.set(LS.speed(P.song.id), P.speed);
+  // keep the same fraction of the current line done
+  if (P.state === 'playing') { const frac = (performance.now() - P.unitStart) / before; P.unitStart = performance.now() - frac * unitMs(P.units[P.idx]); }
+  updateInfo();
+}
+function stopSong() { cancelAnimationFrame(P.raf); if (P.state !== 'idle') P.state = 'idle'; $('count').classList.remove('show'); releaseAwake(); }
+
+$('bGo').addEventListener('click', () => (P.state === 'playing' || P.state === 'count') ? pause() : play());
+$('bSlower').addEventListener('click', () => changeSpeed(0.95));
+$('bFaster').addEventListener('click', () => changeSpeed(1.05));
+$('bRestart').addEventListener('click', restart);
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+
+async function keepAwake() { try { if ('wakeLock' in navigator && !P.wake) P.wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
+function releaseAwake() { try { P.wake && P.wake.release(); } catch (e) {} P.wake = null; }
+
+/* =====================================================================
+   HEAD TILT (same method as the Tilt Test that worked on the glasses)
+   ===================================================================== */
+let lastOri = null, tiltCal = store.get(LS.tilt, null), tiltBase = tiltCal ? tiltCal.base : null;
+let tiltArmed = true, overSince = 0;
+const TILT = { thresh: 0.6, holdMs: 400 };
+const diff = (a, b) => ((a - b + 540) % 360) - 180;
+function circMean(arr) {
+  const o = {};
+  for (const k of ['alpha', 'beta', 'gamma']) {
+    const x = arr.reduce((a, v) => a + Math.cos(v[k] * Math.PI / 180), 0), y = arr.reduce((a, v) => a + Math.sin(v[k] * Math.PI / 180), 0);
+    o[k] = Math.atan2(y, x) * 180 / Math.PI;
+  }
+  return o;
+}
+window.addEventListener('deviceorientation', e => {
+  if (e.beta == null && e.gamma == null) return;
+  lastOri = { alpha: e.alpha ?? 0, beta: e.beta ?? 0, gamma: e.gamma ?? 0 };
+  if (!tiltCal || !tiltBase || !$('play').classList.contains('active')) return;
+  if (!['playing', 'paused', 'ready'].includes(P.state)) return;
+  const rel = diff(lastOri[tiltCal.axis], tiltBase[tiltCal.axis]) * tiltCal.sign / tiltCal.span;
+  const now = performance.now();
+  if (Math.abs(rel) < TILT.thresh * 0.4) { tiltArmed = true; overSince = 0; return; }
+  if (!tiltArmed || Math.abs(rel) < TILT.thresh) { overSince = 0; return; }
+  if (!overSince) overSince = now;
+  if (now - overSince >= TILT.holdMs) { tiltArmed = false; overSince = 0; nudge(rel > 0 ? 1 : -1); }
+});
+function nudge(step) {
+  go(step);
+  const n = $('nudge'); n.textContent = step > 0 ? '▼' : '▲'; n.classList.add('on'); setTimeout(() => n.classList.remove('on'), 300);
+}
+
+// Calibration screen
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function sample(ms) { const s = []; const end = performance.now() + ms; while (performance.now() < end) { if (lastOri) s.push({ ...lastOri }); await sleep(40); } return s; }
+async function countdown(msg, n) { $('tMsg').textContent = msg; for (let i = n; i > 0; i--) { $('tBig').textContent = i; await sleep(1000); } $('tBig').textContent = '…'; }
+async function calibrate() {
+  $('bTiltGo').hidden = true; $('tNote').textContent = '';
+  await sleep(600);
+  if (!lastOri) { $('tMsg').textContent = 'No motion readings from the glasses.'; $('tBig').textContent = ''; $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Try again'; $('bTiltGo').focus(); return; }
+  await countdown('Hold your head level…', 3);
+  const base = circMean(await sample(1200));
+  await countdown('Tilt your head RIGHT and hold', 3);
+  const tilt = circMean(await sample(1200));
+  let best = 0, axis = 'gamma';
+  for (const k of ['beta', 'gamma', 'alpha']) { const d = diff(tilt[k], base[k]); if (Math.abs(d) > Math.abs(best)) { best = d; axis = k; } }
+  if (Math.abs(best) < 6) { $('tMsg').textContent = 'Barely moved. Try a bigger tilt.'; $('tBig').textContent = ''; $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Try again'; $('bTiltGo').focus(); return; }
+  tiltCal = { axis, sign: Math.sign(best), span: Math.abs(best), base }; tiltBase = base; store.set(LS.tilt, tiltCal);
+  $('tMsg').textContent = 'Done! Tilt right = next line, left = back a line.'; $('tBig').textContent = '✓';
+  $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Back to songs'; $('bTiltGo').dataset.done = '1'; $('bTiltGo').focus();
+}
+$('bTilt').addEventListener('click', () => {
+  history.pushState({ screen: 'tilt' }, '');
+  $('tMsg').textContent = tiltCal ? 'Head tilt is set up. Redo it?' : 'Set up head tilt: tilt right = next line, tilt left = back a line.';
+  $('tBig').textContent = ''; $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Begin'; delete $('bTiltGo').dataset.done;
+  show('tilt', 'bTiltGo');
+});
+$('bTiltGo').addEventListener('click', () => { if ($('bTiltGo').dataset.done) history.back(); else calibrate(); });
+
+/* ---------- Back button ---------- */
+window.addEventListener('popstate', () => { stopSong(); show('list'); renderList(); });
+
+/* =====================================================================
+   Voice control (WebMCP). Optional; the app works without it.
+   ===================================================================== */
+const reply = text => ({ content: [{ type: 'text', text }] });
+const norm = s => s.toLowerCase().replace(/\(.*?\)/g, '').replace(/[^a-z0-9 ]/g, '').trim();
+const inSong = () => $('play').classList.contains('active') && P.units.length;
+const TOOLS = [
+  { name: 'open_song', description: 'Open a song from the Songbook by its title (partial titles are fine).',
+    inputSchema: { type: 'object', properties: { title: { type: 'string', description: 'Song title, e.g. "Jolene"' } }, required: ['title'] },
+    execute: async ({ title }) => {
+      const q = norm(title || ''); const hit = songList.find(s => norm(s.title) === q) || songList.find(s => norm(s.title).includes(q));
+      if (!hit) return reply(`No song matching "${title}". Songs: ${songList.map(s => s.title).join(', ')}`);
+      await openSong(hit); return reply(`Opened ${hit.title}. Say start when ready.`);
+    } },
+  { name: 'start_song', description: 'Start (with a count-in) or resume scrolling the open song.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { if (!inSong()) return reply('Open a song first.'); play(); return reply('Starting.'); } },
+  { name: 'pause_song', description: 'Pause scrolling.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { pause(); return reply('Paused.'); } },
+  { name: 'next_line', description: 'Move forward a number of lines (default 1).', inputSchema: { type: 'object', properties: { lines: { type: 'integer' } } },
+    execute: async ({ lines }) => { if (!inSong()) return reply('Open a song first.'); go(Math.max(1, lines || 1)); return reply('Moved ahead.'); } },
+  { name: 'previous_line', description: 'Move back a number of lines (default 1).', inputSchema: { type: 'object', properties: { lines: { type: 'integer' } } },
+    execute: async ({ lines }) => { if (!inSong()) return reply('Open a song first.'); go(-Math.max(1, lines || 1)); return reply('Moved back.'); } },
+  { name: 'change_tempo', description: 'Make the scrolling faster or slower. Use "faster" or "slower".', inputSchema: { type: 'object', properties: { direction: { type: 'string' } }, required: ['direction'] },
+    execute: async ({ direction }) => { if (!inSong()) return reply('Open a song first.'); changeSpeed(/slow/i.test(direction) ? 0.95 : 1.05); return reply(`Now ${bpm()} bpm.`); } }
+];
+(function registerVoiceTools() {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || typeof mc.registerTool !== 'function') return;
+  for (const t of TOOLS) { try { const p = mc.registerTool(t); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+})();
+
+/* ---------- start ---------- */
+history.replaceState({ screen: 'list' }, '');
+if (songList.length) renderList();
+loadList();
+</script>
+</body>
+</html>
