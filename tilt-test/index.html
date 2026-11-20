@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Tilt Test: checks whether a deliberate head tilt can be detected on Meta Ray-Ban Display, for hands-free song scrolling.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Tilt Test</title>
+<style>
+  /* Additive display: black = see-through. */
+  :root { --amber:#ffb21e; --mint:#3df5c8; --dim:#9fb0b8; --focus:#ffd84a; --u:min(1vw,1vh); }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:#000; color:#fff; overflow:hidden;
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; -webkit-user-select:none; user-select:none; }
+  .screen { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; gap:calc(var(--u)*3); padding:calc(var(--u)*5); }
+  .screen.active { display:flex; }
+  h1 { margin:0; font-size:calc(var(--u)*8); color:var(--amber); }
+  p { margin:0; font-size:calc(var(--u)*4.6); line-height:1.35; }
+  .dim { color:var(--dim); font-size:calc(var(--u)*3.8); }
+  button { font:inherit; color:#fff; background:#111; border:calc(var(--u)*.5) solid #444; border-radius:calc(var(--u)*2.5);
+    padding:calc(var(--u)*2.6) calc(var(--u)*6); font-size:calc(var(--u)*5); font-weight:700; }
+  button:focus { outline:none; border-color:var(--focus); box-shadow:0 0 0 calc(var(--u)*.6) var(--focus); }
+  .big { font-size:calc(var(--u)*14); font-weight:800; font-variant-numeric:tabular-nums; }
+  .row { display:flex; gap:calc(var(--u)*3); }
+  .counts { display:flex; gap:calc(var(--u)*8); font-size:calc(var(--u)*5); }
+  .counts b { display:block; font-size:calc(var(--u)*12); }
+  #flash { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:calc(var(--u)*12);
+    font-weight:800; pointer-events:none; opacity:0; transition:opacity .25s; }
+  #flash.on { opacity:1; transition:none; }
+  .meter { width:100%; height:calc(var(--u)*5); background:#222; border-radius:99px; position:relative; overflow:hidden; }
+  .meter i { position:absolute; top:0; bottom:0; left:50%; width:3px; background:#666; }
+  #bar { position:absolute; top:0; bottom:0; left:50%; width:0; background:var(--mint); }
+  .live { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:calc(var(--u)*3.4); color:var(--dim); }
+</style>
+</head>
+<body>
+
+<section class="screen active" id="s0">
+  <h1>Tilt Test</h1>
+  <p>Checks whether the glasses can feel a head tilt, so songs can scroll hands-free.</p>
+  <p class="dim">Takes about 2 minutes. Have your guitar handy.</p>
+  <button id="bStart">Start</button>
+</section>
+
+<section class="screen" id="sNo">
+  <h1>No sensor data</h1>
+  <p>The glasses didn't send any motion readings to this page.</p>
+  <p class="dim" id="noWhy"></p>
+  <button id="bRetry">Try again</button>
+</section>
+
+<section class="screen" id="sCal">
+  <p id="calMsg">Hold your head still…</p>
+  <div class="big" id="calCount">3</div>
+  <p class="live" id="calLive"></p>
+</section>
+
+<section class="screen" id="sRun">
+  <p class="dim">Play and sing for a minute. Tilt <b>right</b> or <b>left</b> on purpose now and then.</p>
+  <div class="counts"><div>Left<b id="cL">0</b></div><div>Right<b id="cR">0</b></div></div>
+  <div class="meter"><i></i><div id="bar"></div></div>
+  <p class="live" id="runLive"></p>
+  <div class="row"><button id="bLess">Less sensitive</button><button id="bMore">More</button></div>
+  <p class="dim" id="sens"></p>
+</section>
+
+<div id="flash"></div>
+
+<script>
+/* =====================================================================
+   Tilt Test for Meta Ray-Ban Display
+   1) Listens to deviceorientation (and devicemotion as a fallback signal).
+   2) Calibrates: still baseline, then "tilt right and hold" to learn which
+      axis and direction a right tilt moves.
+   3) Detects: a tilt past THRESH x (calibrated amount) held for HOLD_MS fires
+      once; head must come back near level before the next one fires.
+   Counts every trigger so false triggers while singing are easy to spot.
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const HOLD_MS = 400;
+let thresh = 0.6;                  // fraction of the calibrated right-tilt
+let last = null, gotData = false, mode = 'idle';
+let base = null, axis = null, sign = 1, span = 20;
+let overSince = 0, armed = true, counts = { L: 0, R: 0 };
+
+function show(id, focus) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  if (focus) setTimeout(() => $(focus).focus(), 0);
+}
+function flash(text, color) {
+  const f = $('flash'); f.textContent = text; f.style.color = color;
+  f.classList.add('on'); setTimeout(() => f.classList.remove('on'), 350);
+}
+const fmt = o => o ? `a ${o.alpha?.toFixed(0)}  b ${o.beta?.toFixed(0)}  g ${o.gamma?.toFixed(0)}` : '';
+// Smallest signed difference between two angles (handles 359 -> 1 wrap).
+const diff = (a, b) => ((a - b + 540) % 360) - 180;
+
+function onOrient(e) {
+  if (e.beta == null && e.gamma == null) return;
+  gotData = true;
+  last = { alpha: e.alpha ?? 0, beta: e.beta ?? 0, gamma: e.gamma ?? 0 };
+  if (mode === 'cal') $('calLive').textContent = fmt(last);
+  if (mode === 'run') detect();
+}
+
+async function start() {
+  // iOS-style permission gate; harmless elsewhere.
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
+      const r = await DeviceOrientationEvent.requestPermission();
+      if (r !== 'granted') return noData('Motion permission was declined.');
+    }
+  } catch (e) {}
+  window.addEventListener('deviceorientation', onOrient);
+  mode = 'cal'; show('sCal');
+  setTimeout(() => { if (!gotData) noData('This may mean web apps cannot use the motion sensor yet.'); else calibrate(); }, 2500);
+}
+function noData(why) { mode = 'idle'; $('noWhy').textContent = why; show('sNo', 'bRetry'); }
+
+function average(ms) {
+  return new Promise(res => {
+    const s = { alpha: [], beta: [], gamma: [] };
+    const t = setInterval(() => { if (last) for (const k in s) s[k].push(last[k]); }, 50);
+    setTimeout(() => {
+      clearInterval(t);
+      const o = {};
+      for (const k in s) {   // circular mean, since angles wrap
+        const x = s[k].reduce((a, v) => a + Math.cos(v * Math.PI / 180), 0);
+        const y = s[k].reduce((a, v) => a + Math.sin(v * Math.PI / 180), 0);
+        o[k] = Math.atan2(y, x) * 180 / Math.PI;
+      }
+      res(o);
+    }, ms);
+  });
+}
+async function countdown(msg, n) {
+  $('calMsg').textContent = msg;
+  for (let i = n; i > 0; i--) { $('calCount').textContent = i; await new Promise(r => setTimeout(r, 1000)); }
+  $('calCount').textContent = '…';
+}
+async function calibrate() {
+  await countdown('Hold your head still…', 3);
+  base = await average(1200);
+  await countdown('Now tilt your head RIGHT (ear toward shoulder) and hold', 3);
+  const tilt = await average(1200);
+  let best = 0;
+  for (const k of ['beta', 'gamma', 'alpha']) {
+    const d = diff(tilt[k], base[k]);
+    if (Math.abs(d) > Math.abs(best)) { best = d; axis = k; }
+  }
+  if (Math.abs(best) < 6) {
+    $('calMsg').textContent = 'Barely any movement was measured. Try a bigger tilt.';
+    $('calCount').textContent = '';
+    await new Promise(r => setTimeout(r, 2500));
+    return calibrate();
+  }
+  sign = Math.sign(best); span = Math.abs(best);
+  flash('✓', 'var(--mint)');
+  await countdown('Got it. Head back to level.', 2);
+  mode = 'run'; updateSens(); show('sRun', 'bLess');
+}
+
+function detect() {
+  const d = diff(last[axis], base[axis]) * sign;      // + = right, - = left
+  const rel = d / span;
+  const bar = $('bar');
+  const w = Math.min(50, Math.abs(rel) * 50 / 1.2);
+  bar.style.width = w + '%'; bar.style.left = rel >= 0 ? '50%' : (50 - w) + '%';
+  bar.style.background = Math.abs(rel) >= thresh ? 'var(--amber)' : 'var(--mint)';
+  $('runLive').textContent = `${axis} ${d.toFixed(0)}°  (right tilt = ${span.toFixed(0)}°)`;
+
+  const now = performance.now();
+  if (Math.abs(rel) < thresh * 0.4) { armed = true; overSince = 0; return; }   // back near level: re-arm
+  if (!armed || Math.abs(rel) < thresh) { overSince = 0; return; }
+  if (!overSince) overSince = now;
+  if (now - overSince >= HOLD_MS) {
+    armed = false; overSince = 0;
+    if (rel > 0) { counts.R++; $('cR').textContent = counts.R; flash('RIGHT ▶', 'var(--mint)'); }
+    else { counts.L++; $('cL').textContent = counts.L; flash('◀ LEFT', 'var(--amber)'); }
+  }
+}
+function updateSens() { $('sens').textContent = `Needs ${Math.round(thresh * 100)}% of your test tilt, held ${HOLD_MS / 1000}s`; }
+
+$('bStart').addEventListener('click', start);
+$('bRetry').addEventListener('click', () => { show('s0', 'bStart'); });
+$('bLess').addEventListener('click', () => { thresh = Math.min(1.2, +(thresh + 0.1).toFixed(1)); updateSens(); });
+$('bMore').addEventListener('click', () => { thresh = Math.max(0.3, +(thresh - 0.1).toFixed(1)); updateSens(); });
+window.addEventListener('popstate', () => location.reload());
+setTimeout(() => $('bStart').focus(), 0);
+</script>
+</body>
+</html>
