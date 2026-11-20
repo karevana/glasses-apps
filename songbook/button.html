@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Songbook button</title>
+<style>
+  :root { --amber:#ffb21e; --mint:#3df5c8; --bg:#121417; --card:#1b1e23; --line:#2c313a; --dim:#9fb0b8; }
+  body { margin:0; background:var(--bg); color:#fff; font:17px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:32px 20px 60px; }
+  h1 { color:var(--amber); margin:0 0 6px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 22px; margin:18px 0; }
+  ol { padding-left:22px; margin:0; } li { margin:8px 0; }
+  .btn { display:inline-block; margin:10px 0 4px; padding:12px 22px; border-radius:10px; background:var(--amber); color:#111; font-weight:800; text-decoration:none; cursor:grab; }
+  .dim { color:var(--dim); font-size:15px; }
+  kbd { background:#0e1013; border:1px solid var(--line); border-radius:5px; padding:1px 6px; font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Songbook button for Chrome</h1>
+  <p class="dim">One click on any Ultimate Guitar chords page sends the song to your Drive &rsaquo; Songbook folder, ready for the glasses.</p>
+
+  <div class="card">
+    <b>1. Put the button on your bookmarks bar</b>
+    <ol>
+      <li>If you can't see the bookmarks bar, press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd>.</li>
+      <li>Drag this yellow button up onto the bookmarks bar:<br>
+        <a class="btn" href="javascript:(function(){%20var%20p=document.querySelector('pre');%20if(!/ultimate-guitar%5C.com$/.test(location.hostname)||!p||p.innerText.trim().length%3C20){alert('Songbook:%20open%20a%20song%5C's%20Chords%20page%20on%20Ultimate%20Guitar%20first.%20(Official/interactive%20tabs%20have%20no%20text%20sheet%20-%20pick%20a%20%22Chords%22%20version.)');return;}%20function%20leaf(l){var%20r=new%20RegExp('^'+l+'%5C%5Cs*:?$','i'),els=document.querySelectorAll('div,span,td,th,dt,b,strong');for(var%20i=0;i%3Cels.length;i++){var%20e=els[i];if(!e.children.length%26%26r.test(e.textContent.trim())){var%20n=e.nextElementSibling;return%20n?n.textContent.trim():e.parentElement.textContent.replace(e.textContent,'').trim();}}return%20'';}%20var%20h=(document.querySelector('h1')||{}).textContent||document.title.split('%20by%20')[0];%20h=h.replace(/%5Cs+(chords|tab|tabs|ukulele%20chords|ukulele|bass%20tab|bass|guitar%20pro|power%20tab|drum%20tab|official)%5Cs*$/i,'').trim();%20var%20a=((document.querySelector('a[href*=%22/artist/%22]')||{}).textContent||'').replace(/%5C/%5Cs*$/,'').trim();%20var%20d={title:h,artist:a,capo:leaf('Capo'),key:leaf('Key'),tuning:leaf('Tuning'),text:p.innerText.replace(/%5Cr/g,''),src:location.href};%20window.open('https://karevana.github.io/glasses-apps/songbook/add.html%23'+encodeURIComponent(JSON.stringify(d)),'_blank');%20})();" onclick="alert('Drag me up to your bookmarks bar instead of clicking. Then use me on an Ultimate Guitar song page.');return false;">&#10133; Songbook</a></li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <b>2. Use it</b>
+    <ol>
+      <li>Open a song's <b>Chords</b> page on Ultimate Guitar (transpose it first if you like, and the button saves it as shown).</li>
+      <li>Click <b>&#10133; Songbook</b> on the bookmarks bar. A tab opens with the song filled in.</li>
+      <li>Type the tempo (there's a "Look it up" link), check the capo, press <kbd>Enter</kbd>. Done.</li>
+    </ol>
+    <p class="dim">The first time, that tab asks for your Songbook address (the one ending in <b>?k=&hellip;</b>). Paste it once and it's remembered.</p>
+  </div>
+</main>
+</body>
+</html>

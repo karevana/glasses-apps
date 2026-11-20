@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Add to Songbook</title>
+<style>
+  /* Desktop page, opened by the "Send to Songbook" bookmark button. */
+  :root { --amber:#ffb21e; --mint:#3df5c8; --bg:#121417; --card:#1b1e23; --line:#2c313a; --dim:#9fb0b8; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: #fff; font: 16px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { margin: 0 0 4px; font-size: 26px; color: var(--amber); }
+  .sub { color: var(--dim); margin: 0 0 22px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  label { display: block; font-size: 13px; color: var(--dim); margin-bottom: 4px; }
+  input, select { width: 100%; font: inherit; color: #fff; background: #0e1013; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; }
+  input:focus, select:focus, button:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
+  .row { display: grid; grid-template-columns: 1.1fr .9fr .8fr .7fr; gap: 12px; margin-top: 14px; }
+  .bpmwrap { display: flex; gap: 8px; }
+  .bpmwrap a { white-space: nowrap; align-self: center; color: var(--mint); font-size: 14px; }
+  .hint { font-size: 13px; color: var(--dim); margin-top: 6px; }
+  pre { margin: 0; max-height: 300px; overflow: auto; font: 13px/1.35 ui-monospace, Menlo, Consolas, monospace; color: #dfe6ea; white-space: pre; }
+  .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  button { font: inherit; font-weight: 700; color: #111; background: var(--amber); border: 0; border-radius: 10px; padding: 11px 22px; cursor: pointer; }
+  button.ghost { background: transparent; color: #fff; border: 1px solid var(--line); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { font-weight: 600; }
+  #status.ok { color: var(--mint); }
+  #status.err { color: #ff7a7a; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Add to Songbook</h1>
+  <p class="sub" id="from">Saves this chord sheet as a Google Doc in your Drive › Songbook folder.</p>
+
+  <div class="card hidden" id="keyCard">
+    <label for="keyIn">Your Songbook address (only needed once on this computer)</label>
+    <input id="keyIn" placeholder="https://karevana.github.io/glasses-apps/songbook/?k=…">
+    <div class="hint">Paste the full Songbook address that ends in <b>?k=…</b>. It's remembered after this.</div>
+  </div>
+
+  <div class="card hidden" id="nothing">
+    <b>No song came through.</b>
+    <div class="hint">Open a song on Ultimate Guitar and click your <b>➕ Songbook</b> bookmark from there.</div>
+  </div>
+
+  <div id="form" class="hidden">
+    <div class="card">
+      <label for="title">Song name (as it will appear on the glasses)</label>
+      <input id="title">
+      <div class="row">
+        <div>
+          <label for="bpm">Tempo (BPM)</label>
+          <div class="bpmwrap"><input id="bpm" type="number" min="30" max="260" placeholder="e.g. 96"><a id="lookup" target="_blank" rel="noopener">Look it up ↗</a></div>
+        </div>
+        <div>
+          <label for="time">Time</label>
+          <select id="time"><option>4/4</option><option>3/4</option><option>6/8</option><option>2/4</option></select>
+        </div>
+        <div>
+          <label for="bars">Bars per line</label>
+          <select id="bars"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+        </div>
+        <div>
+          <label for="capo">Capo</label>
+          <input id="capo" type="number" min="0" max="12" value="0">
+        </div>
+      </div>
+      <div class="hint">You can change any of these later by editing the first line of the Google Doc.</div>
+    </div>
+
+    <div class="card">
+      <label>Preview (first lines)</label>
+      <pre id="preview"></pre>
+      <div class="hint" id="count"></div>
+    </div>
+
+    <div class="actions">
+      <button id="save">Save to Songbook</button>
+      <button id="copy" class="ghost hidden">Save as a copy</button>
+      <button id="close" class="ghost hidden">Close tab</button>
+      <span id="status"></span>
+    </div>
+  </div>
+</main>
+
+<script>
+/* Receives the song from the bookmark button (in the URL #hash), lets Karen
+   set tempo/capo, then sends it to n8n, which creates the Google Doc. */
+const ADD_URL = 'https://n8n.rainandwind.ca/webhook/glasses-songbook-add';
+const $ = id => document.getElementById(id);
+const getKey = () => { try { return JSON.parse(localStorage.getItem('songbook.key')) || ''; } catch (e) { return ''; } };
+const setKey = k => { try { localStorage.setItem('songbook.key', JSON.stringify(k)); } catch (e) {} };
+
+let song = null;
+try { song = JSON.parse(decodeURIComponent(location.hash.slice(1))); } catch (e) { song = null; }
+history.replaceState(null, '', location.pathname);   // keep the long song text out of the address bar
+
+if (!getKey()) $('keyCard').classList.remove('hidden');
+$('keyIn').addEventListener('input', () => {
+  const m = $('keyIn').value.match(/[?&]k=([^&#\s]+)/) || $('keyIn').value.trim().match(/^([\w-]{12,})$/);
+  if (m) { setKey(decodeURIComponent(m[1])); $('keyCard').classList.add('hidden'); }
+});
+
+if (!song || !song.text) {
+  $('nothing').classList.remove('hidden');
+} else {
+  $('form').classList.remove('hidden');
+  const title = [song.title, song.artist].filter(Boolean).join(' – ');
+  $('title').value = title;
+  $('from').textContent = song.src ? 'From ' + song.src.replace(/^https?:\/\//, '').slice(0, 80) : $('from').textContent;
+  const capo = (song.capo || '').match(/\d+/);
+  $('capo').value = capo ? capo[0] : 0;
+  // A tempo already in the sheet (some tabs list it) pre-fills the box.
+  const bpmInText = song.text.match(/(\d{2,3})\s*bpm|bpm\s*[:=]?\s*(\d{2,3})|tempo\s*[:=]?\s*(\d{2,3})/i);
+  if (bpmInText) $('bpm').value = bpmInText[1] || bpmInText[2] || bpmInText[3];
+  if (/\b3\/4\b/.test(song.text)) $('time').value = '3/4';
+  $('lookup').href = 'https://www.google.com/search?q=' + encodeURIComponent(`${song.title} ${song.artist || ''} song bpm tempo`);
+  const lines = song.text.split('\n');
+  $('preview').textContent = lines.slice(0, 22).join('\n');
+  $('count').textContent = `${lines.length} lines` + (song.key ? ` · key ${song.key}` : '') + (song.tuning && !/^E A D G B E$/i.test(song.tuning) ? ` · tuning ${song.tuning}` : '');
+  setTimeout(() => $('bpm').focus(), 0);
+}
+
+function headerLine() {
+  const parts = [];
+  if ($('bpm').value) parts.push(`BPM ${$('bpm').value}`);
+  parts.push($('time').value);
+  parts.push(`bars ${$('bars').value}`);
+  if (+$('capo').value) parts.push(`capo ${$('capo').value}`);
+  return parts.join(', ');
+}
+function say(text, cls) { $('status').textContent = text; $('status').className = cls || ''; }
+
+async function save(copy) {
+  const k = getKey();
+  if (!k) { say('Paste your Songbook address at the top first.', 'err'); $('keyCard').classList.remove('hidden'); $('keyIn').focus(); return; }
+  const title = $('title').value.trim();
+  if (!title) { say('Give the song a name.', 'err'); $('title').focus(); return; }
+  const text = headerLine() + '\n\n' + song.text.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+  $('save').disabled = true; $('copy').disabled = true; say('Saving…');
+  try {
+    const body = new URLSearchParams({ k, title, text, copy: copy ? '1' : '0' });
+    const r = await fetch(ADD_URL, { method: 'POST', body });
+    const raw = await r.text();
+    let d = {}; try { d = JSON.parse(raw); } catch (e) {}
+    if (r.ok && d.ok) {
+      say(`Saved "${d.title || title}". Pinch Refresh in Songbook on the glasses.`, 'ok');
+      $('copy').classList.add('hidden'); $('close').classList.remove('hidden'); $('close').focus();
+      return;
+    }
+    if (r.status === 409 || d.exists) {
+      say(d.error || 'That song is already in your Songbook.', 'err');
+      $('copy').classList.remove('hidden'); $('copy').disabled = false; $('save').disabled = false;
+      return;
+    }
+    if (r.status === 403) { setKey(''); $('keyCard').classList.remove('hidden'); }
+    throw new Error(d.error || (raw ? 'Unexpected reply from n8n.' : 'n8n did not finish. Check the Songbook workflow in n8n.'));
+  } catch (e) {
+    say(e.message || 'Could not reach n8n.', 'err'); $('save').disabled = false;
+  }
+}
+$('save').addEventListener('click', () => save(false));
+$('copy').addEventListener('click', () => save(true));
+$('close').addEventListener('click', () => window.close());
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !$('save').disabled) save(false); });
+</script>
+</body>
+</html>
