@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Reader for Meta Ray-Ban Display: open a website or look up a topic, read it as big clean text, follow its links.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>Reader</title>
+<style>
+  /* Reader: a simple page viewer for the glasses.
+     Karen's n8n fetches the page (public sites only); this page keeps just the readable text and the links.
+     Additive display: black = see-through, so bright text on black. */
+  :root {
+    --accent: #7cc4ff;
+    --text: #ffffff;
+    --dim: #a9b7be;
+    --focus: #ffd84a;
+    --u: min(1vw, 1vh);   /* 600x600 => 6px */
+    --fs: 4.6;            /* reading size, changed by Bigger/Smaller text */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; padding: calc(var(--u) * 3.5); gap: calc(var(--u) * 2); }
+  .screen.active { display: flex; }
+  button, input { font: inherit; color: inherit; }
+  button { background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.5); cursor: pointer;
+    padding: calc(var(--u) * 2.2) calc(var(--u) * 1.6); font-size: calc(var(--u) * 4.2); font-weight: 700; }
+  button.go { background: #0b2233; border-color: var(--accent); }
+  button:focus, input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u) * .6) var(--focus); }
+  .msg { color: var(--dim); font-size: calc(var(--u) * 4.4); line-height: 1.4; text-align: center; margin: auto 0; }
+  .err { color: #ff9a8a; }
+  .spin { width: calc(var(--u) * 8); height: calc(var(--u) * 8); margin: 0 auto calc(var(--u) * 3); border-radius: 50%;
+    border: calc(var(--u) * 1) solid #222; border-top-color: var(--accent); animation: s .8s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+
+  /* home */
+  h1.brand { margin: 0; font-size: calc(var(--u) * 6.4); color: var(--accent); }
+  .addr { display: grid; grid-template-columns: 1fr auto; gap: calc(var(--u) * 1.6); }
+  #addr { background: #0d0d0d; border: calc(var(--u) * .5) solid #444; border-radius: calc(var(--u) * 2.5);
+    padding: calc(var(--u) * 2.6) calc(var(--u) * 3); font-size: calc(var(--u) * 4.6); min-width: 0; }
+  #addr::placeholder { color: #7d8a90; }
+  .label { color: var(--dim); font-size: calc(var(--u) * 3.6); }
+  #marks { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 1.6); overflow-y: auto; scrollbar-width: none; padding: calc(var(--u) * .8); }
+  #marks::-webkit-scrollbar { display: none; }
+  #marks button { text-align: left; font-size: calc(var(--u) * 4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hint { color: var(--dim); font-size: calc(var(--u) * 3.4); text-align: center; margin-top: auto; }
+
+  /* reader */
+  .bar { display: flex; justify-content: space-between; align-items: baseline; gap: calc(var(--u) * 2); }
+  .site { color: var(--accent); font-size: calc(var(--u) * 3.6); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pg { color: var(--dim); font-size: calc(var(--u) * 3.6); white-space: nowrap; }
+  #text { flex: 1; min-height: 0; overflow: hidden; font-size: calc(var(--u) * var(--fs)); line-height: 1.42; }
+  #text h1 { font-size: 1.3em; line-height: 1.15; margin: 0 0 .5em; }
+  #text h2, #text h3, #text h4 { font-size: 1.05em; color: var(--accent); margin: .9em 0 .3em; }
+  #text p { margin: 0 0 .7em; }
+  #text .li { margin: 0 0 .45em; padding-left: 1em; text-indent: -.8em; }
+  #text .li::before { content: '•  '; color: var(--accent); }
+  #text blockquote { margin: 0 0 .7em; padding-left: .7em; border-left: 3px solid #444; color: #dfe6ea; }
+  #text .speaking { background: #0b2233; }
+  .ctl { display: grid; grid-template-columns: 1fr 1.5fr 1.3fr 1fr; gap: calc(var(--u) * 1.4); }
+  .ctl button { padding: calc(var(--u) * 2) 0; font-size: calc(var(--u) * 4); }
+
+  /* links + menu */
+  #linkList, #menuList { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: calc(var(--u) * 1.3); scrollbar-width: none; padding: calc(var(--u) * .8); }
+  #linkList::-webkit-scrollbar, #menuList::-webkit-scrollbar { display: none; }
+  #linkList button { text-align: left; font-size: calc(var(--u) * 4); font-weight: 600; flex: 0 0 auto; line-height: 1.25; }
+  #linkList button small { display: block; color: var(--dim); font-weight: 400; font-size: calc(var(--u) * 3); margin-top: calc(var(--u) * .6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #linkList button b { color: var(--accent); margin-right: calc(var(--u) * 1.2); }
+  #menuList button { text-align: left; flex: 0 0 auto; }
+</style>
+</head>
+<body>
+
+<!-- HOME -->
+<section class="screen active" id="home">
+  <h1 class="brand">Reader</h1>
+  <div class="addr">
+    <input id="addr" type="text" placeholder="Say a website or a topic" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="go" id="bGo">Go</button>
+  </div>
+  <div class="label">Saved</div>
+  <div id="marks"></div>
+  <div class="hint">A website like <b>cbc.ca/lite</b>, or a few words to look up on Wikipedia.</div>
+</section>
+
+<!-- LOADING -->
+<section class="screen" id="wait"><div class="msg"><div class="spin"></div><span id="waitMsg">Opening…</span></div></section>
+
+<!-- READER -->
+<section class="screen" id="read">
+  <div class="bar"><div class="site" id="site"></div><div class="pg" id="pg"></div></div>
+  <div id="text"></div>
+  <div class="ctl">
+    <button id="bUp">▲</button>
+    <button class="go" id="bDown">▼ More</button>
+    <button id="bLinks">Links</button>
+    <button id="bMenu">☰</button>
+  </div>
+</section>
+
+<!-- LINKS -->
+<section class="screen" id="links">
+  <div class="bar"><div class="site" id="linksTitle">Links</div><div class="pg" id="linksCount"></div></div>
+  <div id="linkList"></div>
+</section>
+
+<!-- MENU -->
+<section class="screen" id="menu">
+  <div class="bar"><div class="site">Menu</div></div>
+  <div id="menuList"></div>
+</section>
+
+<script>
+const API = 'https://n8n.rainandwind.ca/webhook/glasses-page';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+(() => { const k = new URLSearchParams(location.search).get('k'); if (k) store.set('reader.key', k); })();
+const KEY = () => store.get('reader.key', '');
+
+const DEFAULT_MARKS = [
+  { t: 'CBC News (lite)', u: 'https://www.cbc.ca/lite/news' },
+  { t: 'NPR (text)', u: 'https://text.npr.org/' },
+  { t: 'CNN (lite)', u: 'https://lite.cnn.com/' },
+  { t: 'Wikipedia', u: 'https://en.wikipedia.org/wiki/Main_Page' }
+];
+let marks = store.get('reader.marks', DEFAULT_MARKS);
+let fs = store.get('reader.fs', 4.6);
+document.documentElement.style.setProperty('--fs', fs);
+
+/* =====================================================================
+   What you typed or said -> an address. "cbc dot ca" works; words without a dot search Wikipedia.
+   ===================================================================== */
+function toAddress(input) {
+  let s = String(input || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  const t = s.replace(/\s+dot\s+/gi, '.').replace(/\s+slash\s+/gi, '/').replace(/\.\s+/g, '.').toLowerCase();
+  if (!/\s/.test(t) && /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/.test(t)) return 'https://' + t;
+  return 'https://en.wikipedia.org/w/index.php?search=' + encodeURIComponent(s);
+}
+
+/* =====================================================================
+   Make a page readable: keep the main text (headings, paragraphs, list items) and the links.
+   ===================================================================== */
+const DROP = 'script,style,noscript,template,svg,canvas,iframe,object,embed,video,audio,picture,img,form,button,input,select,textarea,' +
+  'nav,header,footer,aside,figure,table,[role=navigation],[role=banner],[role=contentinfo],[role=complementary],[aria-hidden=true],[hidden],' +
+  '.mw-editsection,.reference,.reflist,.navbox,.infobox,.hatnote,.mw-jump-link,.noprint,.sr-only,.visually-hidden,.ad,.ads,.advert,.cookie,.newsletter,.related,.share,.social';
+const BLOCKS = 'h1,h2,h3,h4,p,li,blockquote,pre,dt,dd,div';
+// Some sites (CBC Lite) put paragraphs in plain <div>s: a div with no inner blocks and real sentences counts as a paragraph.
+const INNER = 'p,div,li,h1,h2,h3,h4,ul,ol,blockquote,pre,section,article';
+const isTextDiv = el => el.tagName === 'DIV' && !el.querySelector(INNER) && el.textContent.trim().length >= 60;
+const isPara = el => el.tagName === 'P' || el.tagName === 'BLOCKQUOTE' || isTextDiv(el);
+function paraChars(el) { let n = 0; for (const c of el.querySelectorAll('p,blockquote,div')) if (isPara(c) && !c.parentElement.closest('p,blockquote')) n += c.textContent.trim().length; return n; }
+function cleanTitle(t) {
+  t = t.replace(/\s+/g, ' ').trim();
+  // Drop a trailing site name like " - Wikipedia" or " | CNN" (but keep dashes that are part of a headline).
+  const m = t.match(/^(.{2,}?)\s+(?:\||-)\s+([A-Z][\w.&' ]{1,28})$/);
+  return m && m[2].trim().split(/\s+/).length <= 4 ? m[1] : t;
+}
+function readable(html, base) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const meta = n => { const m = doc.querySelector(`meta[property="${n}"],meta[name="${n}"]`); return m ? (m.getAttribute('content') || '').trim() : ''; };
+  let title = cleanTitle(meta('og:title') || (doc.querySelector('title') || {}).textContent || '');
+  const allLinks = collectLinks(doc.body || doc.documentElement, base);
+  doc.querySelectorAll(DROP).forEach(el => el.remove());
+  // Main text = the element holding the most paragraph text directly inside it...
+  let root = null, best = 0;
+  doc.querySelectorAll('article,main,section,div,td,[role=main]').forEach(el => {
+    let n = 0;
+    for (const c of el.children) if (isPara(c)) n += c.textContent.trim().length;
+    if (n > best) { best = n; root = el; }
+  });
+  if (!root || best < 250) root = doc.querySelector('article') || doc.querySelector('main') || doc.querySelector('[role=main]') || doc.body || doc.documentElement;
+  else {
+    // ...then widen to the whole article when the text is split into sections (Wikipedia) or the headline sits just outside.
+    for (let i = 0; i < 12; i++) {
+      const up = root.parentElement;
+      if (!up || up.tagName === 'BODY' || up.tagName === 'HTML') break;
+      const mine = paraChars(root), theirs = paraChars(up), all = up.textContent.replace(/\s+/g, ' ').length;
+      const moreHeads = up.querySelectorAll('h1,h2').length > root.querySelectorAll('h1,h2').length;
+      if ((theirs >= mine && theirs > all * 0.45) || (moreHeads && theirs >= mine && all < root.textContent.length * 1.6)) root = up; else break;
+    }
+  }
+  const blocks = []; let chars = 0, last = '';
+  for (const el of root.querySelectorAll(BLOCKS)) {
+    if (el.tagName === 'DIV' && !isTextDiv(el)) continue;
+    if (el.parentElement && el.parentElement.closest('p,li,blockquote,pre,dd')) continue;
+    let t = el.textContent.replace(/\s+/g, ' ').trim();
+    if (!t || t === last) continue;
+    const tag = el.tagName === 'DIV' ? 'p' : el.tagName.toLowerCase();
+    if (tag === 'li') { const a = el.querySelector('a'); if (a && a.textContent.replace(/\s+/g, ' ').trim() === t && t.length < 120) continue; }  // menu-style link lists live under Links
+    if (tag === 'p' && t.length < 3) continue;
+    if (/^(advertisement|share|share this|skip to (main )?content|loading\.*|media video \|?|image \| .*)$/i.test(t)) continue;
+    blocks.push({ tag: tag === 'dt' || tag === 'dd' ? 'p' : tag, text: t });
+    chars += t.length; last = t;
+    if (chars > 40000) break;
+  }
+  if (title && blocks.length && blocks[0].tag === 'h1' && blocks[0].text.toLowerCase() === title.toLowerCase()) blocks.shift();
+  else if (blocks.length && blocks.slice(0, 4).some(b => b.tag === 'h1' && b.text.toLowerCase() === title.toLowerCase())) blocks.splice(blocks.findIndex(b => b.tag === 'h1'), 1);
+  const rootLinks = collectLinks(root, base);
+  const links = rootLinks.length >= 8 ? rootLinks : allLinks;
+  const textChars = blocks.filter(b => b.tag === 'p' || b.tag === 'blockquote').reduce((a, b) => a + b.text.length, 0);
+  return { title: title || (blocks[0] && blocks[0].text) || base, blocks, links, listPage: textChars < 700 && links.length >= 8 };
+}
+function collectLinks(root, base) {
+  const out = [], seen = new Set();
+  const here = String(base).replace(/#.*$/, '');
+  for (const a of root.querySelectorAll('a[href]')) {
+    let u; try { u = new URL(a.getAttribute('href'), base); } catch (e) { continue; }
+    if (!/^https?:$/.test(u.protocol)) continue;
+    u.hash = '';
+    const href = u.href;
+    if (href === here || seen.has(href)) continue;
+    const t = (a.textContent || a.getAttribute('aria-label') || a.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+    if (t.length < 2 || /^(skip to|sign in|log in|subscribe|menu|search|privacy|terms|cookie|advertis)/i.test(t)) continue;
+    seen.add(href); out.push({ t: t.slice(0, 140), u: href });
+    if (out.length >= 80) break;
+  }
+  return out;
+}
+
+/* =====================================================================
+   Fetch through n8n (it hands redirects back, so each hop is checked there)
+   ===================================================================== */
+async function fetchPage(url) {
+  for (let hop = 0; hop < 6; hop++) {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 25000);
+    let d;
+    try { d = await fetch(`${API}?k=${encodeURIComponent(KEY())}&url=${encodeURIComponent(url)}`, { cache: 'no-store', signal: ctrl.signal }).then(r => r.json()); }
+    catch (e) { throw new Error(e.name === 'AbortError' ? 'That site took too long.' : 'Could not reach your n8n.'); }
+    finally { clearTimeout(t); }
+    if (!d.ok) throw new Error(d.error || 'That page could not be opened.');
+    if (d.redirect) { url = d.redirect; continue; }
+    return { url: d.url, html: d.html || '' };
+  }
+  throw new Error('That page kept redirecting.');
+}
+
+/* ---------- screens + Back ---------- */
+let page = null;           // { url, title, blocks, links, listPage }
+const cache = new Map();
+function show(id, focusId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  if (focusId) setTimeout(() => { const el = $(focusId); el && el.focus(); }, 0);
+}
+window.addEventListener('popstate', e => {
+  stopReading();
+  const st = e.state || { screen: 'home' };
+  if (st.screen === 'home' || !st.url) { renderHome(); show('home', 'addr'); return; }
+  const p = cache.get(st.url);
+  if (!p) { openUrl(st.url, false); return; }
+  page = p;
+  if (st.screen === 'links') renderLinks(); else if (st.screen === 'menu') renderMenu(); else renderRead(st.top || 0);
+});
+
+/* ---------- home ---------- */
+function renderHome() {
+  $('marks').innerHTML = marks.map((m, i) => `<button data-i="${i}">${esc(m.t)}</button>`).join('') || '<div class="label">Nothing saved yet.</div>';
+  $('marks').querySelectorAll('button').forEach(b => b.onclick = () => openUrl(marks[+b.dataset.i].u));
+}
+$('bGo').onclick = () => { const a = toAddress($('addr').value); if (!a) { $('addr').focus(); return; } openUrl(a); };
+$('addr').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('bGo').click(); } });
+$('addr').addEventListener('change', () => { if ($('addr').value.trim()) $('bGo').focus(); });
+
+/* ---------- open a page ---------- */
+async function openUrl(url, push = true) {
+  if (!KEY()) { show('wait'); $('waitMsg').innerHTML = 'This copy has no key.<br>Add the app using the full address that ends in ?k=…'; return; }
+  stopReading();
+  show('wait'); $('waitMsg').textContent = 'Opening ' + url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0, 60) + '…';
+  try {
+    let p = cache.get(url);
+    if (!p) {
+      const r = await fetchPage(url);
+      p = readable(r.html, r.url); p.url = r.url;
+      cache.set(url, p); cache.set(r.url, p);
+      if (cache.size > 30) cache.delete(cache.keys().next().value);
+    }
+    page = p;
+    const screen = p.listPage || !p.blocks.length ? 'links' : 'read';
+    if (push) history.pushState({ screen, url: p.url }, ''); else history.replaceState({ screen, url: p.url }, '');
+    if (screen === 'links') renderLinks(); else renderRead(0);
+  } catch (err) {
+    $('waitMsg').innerHTML = `<span class="err">${esc(err.message)}</span><br><br>Swipe back to try another.`;
+  }
+}
+
+/* ---------- reader ---------- */
+const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } };
+function renderRead(top) {
+  $('site').textContent = host(page.url);
+  $('text').innerHTML = `<h1>${esc(page.title)}</h1>` + page.blocks.map((b, i) => {
+    const tag = b.tag === 'li' ? 'div class="li"' : b.tag === 'pre' ? 'p' : b.tag;
+    const close = b.tag === 'li' ? 'div' : b.tag === 'pre' ? 'p' : b.tag;
+    return `<${tag} data-b="${i}">${esc(b.text)}</${close}>`;
+  }).join('') + `<p style="color:var(--dim);text-align:center;margin-top:1.2em">— End —</p>`;
+  show('read', 'bDown');
+  $('text').scrollTop = top || 0;
+  pageCount();
+}
+function pageCount() {
+  const el = $('text'), step = el.clientHeight * 0.9;
+  const total = Math.max(1, Math.ceil((el.scrollHeight - el.clientHeight) / step) + 1);
+  const now = Math.min(total, Math.round(el.scrollTop / step) + 1);
+  $('pg').textContent = `${now} / ${total}`;
+  $('bDown').textContent = el.scrollTop + el.clientHeight >= el.scrollHeight - 4 ? 'Links ▶' : '▼ More';
+}
+function scrollBy(dir) {
+  const el = $('text');
+  if (dir > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 4) { $('bLinks').click(); return; }
+  el.scrollTop = Math.max(0, el.scrollTop + dir * el.clientHeight * 0.9);
+  if (history.state && history.state.screen === 'read') history.replaceState({ ...history.state, top: el.scrollTop }, '');
+  pageCount();
+}
+$('bDown').onclick = () => { stopReading(); scrollBy(1); };
+$('bUp').onclick = () => { stopReading(); scrollBy(-1); };
+$('bLinks').onclick = () => { stopReading(); history.pushState({ screen: 'links', url: page.url }, ''); renderLinks(); };
+$('bMenu').onclick = () => { stopReading(); history.pushState({ screen: 'menu', url: page.url }, ''); renderMenu(); };
+
+/* ---------- links ---------- */
+function renderLinks() {
+  $('linksTitle').textContent = page.listPage ? (page.title || host(page.url)) : 'Links on this page';
+  $('linksCount').textContent = page.links.length ? page.links.length + ' links' : '';
+  const menuBtn = `<button id="lMenu">☰ Menu${page.blocks.length && page.listPage ? ' · read page text' : ''}</button>`;
+  $('linkList').innerHTML = (page.links.length
+    ? page.links.map((l, i) => `<button data-i="${i}"><b>${i + 1}</b>${esc(l.t)}<small>${esc(host(l.u))}</small></button>`).join('')
+    : '<div class="msg">No links on this page.</div>') + menuBtn;
+  $('linkList').querySelectorAll('button[data-i]').forEach(b => b.onclick = () => openUrl(page.links[+b.dataset.i].u));
+  $('lMenu').onclick = () => { history.pushState({ screen: 'menu', url: page.url }, ''); renderMenu(); };
+  show('links');
+  $('linkList').scrollTop = 0;
+  setTimeout(() => { const f = $('linkList').querySelector('button'); f && f.focus(); }, 0);
+}
+
+/* ---------- menu ---------- */
+function renderMenu() {
+  const saved = marks.some(m => m.u === page.url);
+  const items = [];
+  if (page.blocks.length) items.push(['📖 Read the page', () => { history.replaceState({ screen: 'read', url: page.url }, ''); renderRead(0); }]);
+  if (page.blocks.length && canSpeak) items.push(['🔊 Read it aloud', () => { history.replaceState({ screen: 'read', url: page.url }, ''); renderRead(0); startReading(); }]);
+  items.push([saved ? '✕ Remove from Saved' : '★ Save this page', () => {
+    if (saved) marks = marks.filter(m => m.u !== page.url);
+    else marks = [{ t: (page.title || host(page.url)).slice(0, 40), u: page.url }, ...marks].slice(0, 12);
+    store.set('reader.marks', marks); renderMenu(); }]);
+  items.push(['A+  Bigger text', () => setSize(0.6)]);
+  items.push(['A−  Smaller text', () => setSize(-0.6)]);
+  items.push(['⌂  Home', goHome]);
+  $('menuList').innerHTML = items.map((it, i) => `<button data-i="${i}">${esc(it[0])}</button>`).join('');
+  $('menuList').querySelectorAll('button').forEach(b => b.onclick = items[+b.dataset.i][1]);
+  show('menu', 'menuList');
+  setTimeout(() => { const f = $('menuList').querySelector('button'); f && f.focus(); }, 0);
+}
+function setSize(d) { fs = Math.max(3.6, Math.min(6.4, +(fs + d).toFixed(1))); store.set('reader.fs', fs); document.documentElement.style.setProperty('--fs', fs); }
+function goHome() { stopReading(); history.pushState({ screen: 'home' }, ''); renderHome(); show('home', 'addr'); }
+
+/* ---------- read aloud (the glasses' built-in voice) ---------- */
+const canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+let reading = false, readIdx = 0;
+function startReading() {
+  if (!canSpeak || !page) return;
+  const el = $('text');
+  const firstVisible = [...el.querySelectorAll('[data-b]')].find(b => b.offsetTop - el.offsetTop >= el.scrollTop - 4);
+  readIdx = firstVisible ? +firstVisible.dataset.b : 0;
+  reading = true; speechSynthesis.cancel(); setTimeout(speakNext, 150);
+}
+function speakNext() {
+  if (!reading) return;
+  const b = page.blocks[readIdx];
+  if (!b) { stopReading(); return; }
+  document.querySelectorAll('#text .speaking').forEach(x => x.classList.remove('speaking'));
+  const el = document.querySelector(`#text [data-b="${readIdx}"]`);
+  if (el) { el.classList.add('speaking'); const box = $('text'); const y = el.offsetTop - box.offsetTop; if (y < box.scrollTop || y + el.offsetHeight > box.scrollTop + box.clientHeight) { box.scrollTop = y; pageCount(); } }
+  const u = new SpeechSynthesisUtterance(b.text.slice(0, 3000));
+  u.lang = 'en-US';
+  u.onend = () => { if (reading) { readIdx++; speakNext(); } };
+  u.onerror = () => stopReading();
+  speechSynthesis.speak(u);
+}
+function stopReading() {
+  if (!reading) return;
+  reading = false; try { speechSynthesis.cancel(); } catch (e) {}
+  document.querySelectorAll('#text .speaking').forEach(x => x.classList.remove('speaking'));
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopReading(); });
+
+/* ---------- voice tools for Meta AI (WebMCP) ---------- */
+const reply = text => ({ content: [{ type: 'text', text }] });
+const TOOLS = [
+  { name: 'open_page', description: 'Open a website (like "cbc.ca/lite") or look up a topic on Wikipedia in the Reader app on the glasses.',
+    inputSchema: { type: 'object', properties: { address: { type: 'string', description: 'A web address or a few words to look up' } }, required: ['address'] },
+    execute: async ({ address }) => { await openUrl(toAddress(address)); return reply(page ? `Opened: ${page.title}.` : 'Could not open that.'); } },
+  { name: 'read_aloud', description: 'Read the current Reader page aloud from where it is scrolled to.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { if (!page || !page.blocks.length) return reply('There is no page text to read.'); if (!$('read').classList.contains('active')) renderRead(0); startReading(); return reply('Reading.'); } },
+  { name: 'stop_reading', description: 'Stop reading aloud in the Reader app.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { stopReading(); return reply('Stopped.'); } },
+  { name: 'scroll_down', description: 'Show the next screenful of the Reader page.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { if ($('read').classList.contains('active')) scrollBy(1); return reply('Scrolled.'); } },
+  { name: 'show_links', description: 'Show the numbered links on the current Reader page.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { if (!page) return reply('No page is open.'); $('bLinks').click(); return reply(`${page.links.length} links. Say "open link" and a number.`); } },
+  { name: 'open_link', description: 'Open a link from the current Reader page, by its number or words from its text.',
+    inputSchema: { type: 'object', properties: { link: { type: 'string', description: 'Link number like "3", or words from the link' } }, required: ['link'] },
+    execute: async ({ link }) => {
+      if (!page || !page.links.length) return reply('No links on this page.');
+      const n = parseInt(link, 10);
+      const l = n ? page.links[n - 1] : page.links.find(x => x.t.toLowerCase().includes(String(link).toLowerCase()));
+      if (!l) return reply('I could not find that link.');
+      await openUrl(l.u); return reply(`Opened: ${page.title}.`); } },
+  { name: 'go_home', description: 'Go back to the Reader home screen with the saved sites.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { goHome(); return reply('Home.'); } }
+];
+(function registerVoiceTools() {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || typeof mc.registerTool !== 'function') return;
+  for (const t of TOOLS) { try { const p = mc.registerTool(t); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+})();
+
+history.replaceState({ screen: 'home' }, '');
+renderHome();
+show('home', 'addr');
+</script>
+</body>
+</html>
