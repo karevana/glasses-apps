@@ -7,11 +7,13 @@
 <meta name="theme-color" content="#101214">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Coach">
+<meta name="apple-mobile-web-app-title" content="Stronger Humans">
 <title>Stronger Humans</title>
 <style>
-  /* Phone page for the Stronger Humans meal coach. Plain facts, kind coach, no scolding. */
-  :root { --bg:#101214; --card:#1a1d21; --line:#2a2f36; --text:#f2f4f5; --dim:#9aa6ad; --accent:#3df5c8; --warm:#ffb21e; }
+  /* Stronger Humans: Plan, Do, Check, Act.
+     The person sets their own plan. The app logs, compares and, only when asked, offers options.
+     Neutral by design: no scores, no red, no praise or scolding. */
+  :root { --bg:#101214; --card:#1a1d21; --line:#2a2f36; --text:#f2f4f5; --dim:#9aa6ad; --accent:#3df5c8; --plan:#7fb2ff; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     padding: env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 24px); }
@@ -20,38 +22,53 @@
   h1 { margin:0; font-size:22px; letter-spacing:.01em; }
   h1 span { color: var(--accent); }
   #today { color: var(--dim); font-size: 14px; }
-  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 22px 2px 8px; font-weight: 600; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 22px 2px 8px; font-weight: 600; display:flex; align-items:center; gap:8px; }
+  h2 .step { background: #22272d; border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 1px 7px; font-size: 12px; letter-spacing: .04em; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
-  .snap { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height: 92px; border-radius: 14px;
-    border: 1px solid var(--line); background: #22272d; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; text-align:center; }
+  .snap { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height: 88px; border-radius: 14px;
+    border: 1px solid var(--line); background: #22272d; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; text-align:center; font-size: 15px; }
   .btn.primary { background: #0f3d34; border-color: var(--accent); }
-  .btn .ic { font-size: 28px; line-height: 1; }
-  .btn:disabled { opacity: .5; }
+  .btn.on { border-color: var(--accent); }
+  .btn .ic { font-size: 26px; line-height: 1; }
+  .btn:disabled, button:disabled { opacity: .5; }
   input[type=file] { display: none; }
   .row { display:flex; gap:8px; flex-wrap: wrap; margin-top: 12px; }
   .chip { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
   .chip.on { background: var(--accent); color: #062b24; border-color: var(--accent); font-weight: 700; }
   .field { width: 100%; margin-top: 10px; background: #0d0f11; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; }
-  textarea.field { min-height: 70px; resize: vertical; }
+  textarea.field { min-height: 76px; resize: vertical; }
+  .say { position: relative; }
+  .say textarea { padding-right: 56px; }
+  .mic { position: absolute; right: 8px; bottom: 8px; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: #22272d; color: var(--text); font-size: 20px; cursor: pointer; }
+  .mic.live { background: var(--accent); color: #062b24; border-color: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(61,245,200,.25); } }
+  .wide { margin-top: 10px; width: 100%; min-height: 48px; border-radius: 12px; border: 1px solid var(--accent); background: #0f3d34; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
+  .ghost { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 10px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
   .status { margin-top: 12px; color: var(--dim); font-size: 15px; display:flex; align-items:center; gap:10px; }
-  .spin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid #333; border-top-color: var(--accent); animation: s .8s linear infinite; }
+  .spin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid #333; border-top-color: var(--accent); animation: s .8s linear infinite; flex: none; }
   @keyframes s { to { transform: rotate(360deg); } }
   .err { color: #ff8b8b; }
+  .hint { font-size: 13px; color: var(--dim); margin-top: 8px; }
   .result { margin-top: 14px; display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: start; }
+  .result.noimg { grid-template-columns: 1fr; }
   .result img { width: 84px; height: 84px; object-fit: cover; border-radius: 10px; }
   .desc { font-weight: 600; }
   .items { color: var(--dim); font-size: 14px; margin-top: 4px; }
   .nums { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .num { background: #0d0f11; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: 13px; color: var(--dim); }
   .num b { color: var(--text); }
-  .coach { margin-top: 12px; border-left: 3px solid var(--warm); padding: 8px 12px; background: #221d12; border-radius: 0 10px 10px 0; }
-  .coach .who { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--warm); font-weight: 700; }
-  .coach .item { margin-top: 6px; font-size: 14px; color: var(--dim); }
   .note { font-size: 12px; color: var(--dim); margin-top: 8px; }
+  .src { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; margin-left: 4px; }
   .meal { padding: 12px 0; border-top: 1px solid var(--line); }
-  .meal:first-of-type { border-top: 0; padding-top: 4px; }
+  .meal:first-of-type { border-top: 0; }
   .meal .t { font-size: 13px; color: var(--dim); }
+  /* plan vs actual bars: one neutral colour whatever the number */
+  .vs { margin-top: 4px; }
+  .vs .line { display:flex; justify-content:space-between; font-size: 14px; margin-top: 10px; }
+  .vs .line span { color: var(--dim); }
+  .bar { position: relative; height: 10px; border-radius: 5px; background: #0d0f11; border: 1px solid var(--line); margin-top: 4px; overflow: hidden; }
+  .bar i { position:absolute; left:0; top:0; bottom:0; background: var(--plan); border-radius: 5px; }
   .totals { display:grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
   .totals div { background:#0d0f11; border:1px solid var(--line); border-radius: 10px; padding: 8px 4px; }
   .totals b { display:block; font-size: 20px; }
@@ -60,10 +77,19 @@
   th, td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--line); }
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--dim); font-weight: 600; font-size: 12px; }
+  tr.plan td { color: var(--plan); font-weight: 600; }
   td.none { color: #59636a; }
-  .answer { margin-top: 12px; white-space: normal; }
+  .planview { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align:center; }
+  .planview div { background:#0d0f11; border:1px solid var(--line); border-radius: 10px; padding: 8px 4px; }
+  .planview b { display:block; font-size: 18px; color: var(--plan); }
+  .planview span { font-size: 12px; color: var(--dim); }
+  .planhead { display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; }
+  .planhead small { color: var(--dim); }
+  .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  label { display:block; font-size: 13px; color: var(--dim); margin-top: 10px; }
+  label .field { margin-top: 4px; }
+  .answer { margin-top: 12px; }
   .answer ul { padding-left: 20px; margin: 6px 0; }
-  .ask-btn { margin-top: 10px; width: 100%; min-height: 48px; border-radius: 12px; border: 1px solid var(--accent); background: #0f3d34; color: var(--text); font: inherit; font-weight: 700; }
   .foot { text-align:center; color:#5d686f; font-size: 12px; margin-top: 26px; }
   .hidden { display: none !important; }
 </style>
@@ -73,41 +99,57 @@
   <header><h1>Stronger <span>Humans</span></h1><div id="today"></div></header>
 
   <div class="card hidden" id="keyCard">
-    <b>Paste your Coach address once</b>
+    <b>Paste your private address once</b>
     <input class="field" id="keyIn" placeholder="https://karevana.github.io/glasses-apps/coach/?k=…">
   </div>
 
-  <!-- SNAP -->
+  <!-- PLAN: the person's own targets -->
+  <h2><span class="step">PLAN</span> My plan</h2>
+  <div class="card" id="planCard"><div class="status"><div class="spin"></div>Loading…</div></div>
+
+  <!-- DO: log a meal -->
+  <h2><span class="step">DO</span> Log a meal</h2>
   <div class="card">
     <div class="snap">
       <button class="btn primary" id="bCam"><span class="ic">📷</span>Take photo</button>
-      <button class="btn" id="bPick"><span class="ic">🖼️</span>Choose photo<br><small style="font-weight:400;color:var(--dim)">incl. from glasses</small></button>
+      <button class="btn" id="bPick"><span class="ic">🖼️</span>Choose photo</button>
+      <button class="btn" id="bWords"><span class="ic">💬</span>Type or say it</button>
     </div>
     <input type="file" id="fCam" accept="image/*" capture="environment">
     <input type="file" id="fPick" accept="image/*">
     <div class="row" id="meals"></div>
-    <input class="field" id="note" placeholder="Optional note (e.g. half portion, oat milk)" maxlength="200">
+
+    <div id="wordsBox" class="hidden">
+      <div class="say">
+        <textarea class="field" id="words" maxlength="1000" placeholder="e.g. Two eggs, a slice of whole wheat toast with butter and a banana"></textarea>
+        <button class="mic" id="bMic" title="Speak the meal" aria-label="Speak the meal">🎤</button>
+      </div>
+      <div class="hint" id="micHint"></div>
+      <button class="wide" id="bSendWords">Log this meal</button>
+    </div>
+
+    <input class="field" id="note" placeholder="Optional note for a photo (e.g. half portion, oat milk)" maxlength="200">
     <div id="status"></div>
     <div id="result"></div>
   </div>
 
-  <!-- TODAY -->
-  <h2>Today</h2>
+  <!-- CHECK: today and this week vs plan -->
+  <h2><span class="step">CHECK</span> Today</h2>
   <div class="card" id="todayCard"><div class="status"><div class="spin"></div>Loading…</div></div>
 
-  <!-- WEEK -->
   <h2>This week</h2>
   <div class="card" id="weekCard"></div>
 
-  <!-- ASK -->
-  <h2>Ask the coach</h2>
+  <!-- ACT: options, only when asked -->
+  <h2><span class="step">ACT</span> Options</h2>
   <div class="card">
-    <textarea class="field" id="q" placeholder="e.g. What could I add at dinner? Am I getting enough protein this week?" style="margin-top:0"></textarea>
-    <button class="ask-btn" id="bAsk">Ask</button>
+    <button class="wide" id="bGap" style="margin-top:0">Options to close today's gaps</button>
+    <textarea class="field" id="q" placeholder="Or ask your own question, e.g. What could I add at dinner for more fibre?"></textarea>
+    <button class="ghost" id="bAsk" style="margin-top:8px">Ask</button>
     <div id="answer"></div>
   </div>
 
-  <div class="foot">Numbers are estimates from photos, not measurements. Not medical advice.</div>
+  <div class="foot">Numbers are estimates from photos and descriptions, not measurements. Your plan is yours to set; for medical guidance ask your doctor or dietitian.</div>
 </main>
 
 <script>
@@ -121,14 +163,59 @@ const store = { get: k => { try { return JSON.parse(localStorage.getItem(k)); } 
 const KEY = () => store.get('coach.key') || '';
 if (!KEY()) $('keyCard').classList.remove('hidden');
 $('keyIn').addEventListener('input', () => { const m = $('keyIn').value.match(/[?&]k=([^&#\s]+)/); if (m) { store.set('coach.key', m[1]); $('keyCard').classList.add('hidden'); loadSummary(); } });
+function needKey() { if (KEY()) return false; $('keyCard').classList.remove('hidden'); $('keyIn').focus(); return true; }
 
 /* ---------- local date/time ---------- */
 const pad = n => String(n).padStart(2, '0');
 const localDate = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const localTime = (d = new Date()) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 $('today').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const post = (path, data) => fetch(API + path, { method: 'POST', body: new URLSearchParams(Object.assign({ k: KEY() }, data)) })
+  .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok || !d.ok) throw new Error(d.error || 'Something went wrong. Please try again.'); return d; });
 
-/* ---------- meal chips (auto-picked by time of day) ---------- */
+/* ================= PLAN ================= */
+const PLAN_FIELDS = [
+  ['protein_g', 'Protein (g/day)'], ['fibre_g', 'Fibre (g/day)'], ['fruit_veg_servings', 'Fruit & veg (servings/day)'],
+  ['calories', 'Calories (kcal/day)'], ['carbs_g', 'Carbs (g/day)'], ['fat_g', 'Fat (g/day)']
+];
+let plan = null, editingPlan = false;
+function renderPlan() {
+  if (editingPlan || !plan) {
+    const v = k => esc(plan && plan[k] !== '' && plan[k] != null ? plan[k] : '');
+    $('planCard').innerHTML = `
+      ${plan ? '' : '<div style="margin-bottom:4px"><b>Set your own targets.</b> <span class="hint">From your dietitian, doctor, coach or your own goals. Fill only what you track; leave the rest blank.</span></div>'}
+      <div class="grid2">${PLAN_FIELDS.map(([k, l]) => `<label>${l}<input class="field" type="number" inputmode="decimal" min="0" step="any" id="p_${k}" value="${v(k)}"></label>`).join('')}</div>
+      <label>Eating style <input class="field" id="p_eating_style" maxlength="200" placeholder="e.g. vegetarian, Mediterranean, no dairy" value="${v('eating_style')}"></label>
+      <label>Notes <textarea class="field" id="p_notes" maxlength="600" placeholder="Anything the options should respect (foods you avoid, budget, cooking time)">${v('notes')}</textarea></label>
+      <button class="wide" id="bSavePlan">Save my plan</button>
+      ${plan ? '<button class="ghost" id="bCancelPlan" style="margin-top:8px">Cancel</button>' : ''}
+      <div id="planStatus"></div>`;
+    $('bSavePlan').onclick = savePlan;
+    if ($('bCancelPlan')) $('bCancelPlan').onclick = () => { editingPlan = false; renderPlan(); };
+    return;
+  }
+  const set = PLAN_FIELDS.filter(([k]) => Number(plan[k]) > 0);
+  const when = plan.updated_at ? new Date(plan.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  $('planCard').innerHTML = `
+    <div class="planhead"><small>Set ${esc(when)}</small><button class="ghost" id="bEditPlan">Edit</button></div>
+    <div class="planview">${set.map(([k, l]) => `<div><b>${esc(plan[k])}</b><span>${esc(l.replace(/ \(.*\)/, ''))}</span></div>`).join('')}</div>
+    ${plan.eating_style ? `<div class="note">Eating style: ${esc(plan.eating_style)}</div>` : ''}
+    ${plan.notes ? `<div class="note">${esc(plan.notes)}</div>` : ''}`;
+  $('bEditPlan').onclick = () => { editingPlan = true; renderPlan(); };
+}
+async function savePlan() {
+  if (needKey()) return;
+  const data = {};
+  PLAN_FIELDS.forEach(([k]) => { data[k] = $('p_' + k).value.trim(); });
+  data.eating_style = $('p_eating_style').value.trim();
+  data.notes = $('p_notes').value.trim();
+  if (!PLAN_FIELDS.some(([k]) => Number(data[k]) > 0)) { $('planStatus').innerHTML = '<div class="status err">Add at least one target.</div>'; return; }
+  $('bSavePlan').disabled = true; $('planStatus').innerHTML = '<div class="status"><div class="spin"></div>Saving…</div>';
+  try { const d = await post('sh-plan', data); plan = d.plan; editingPlan = false; renderPlan(); loadSummary(); }
+  catch (err) { $('planStatus').innerHTML = `<div class="status err">${esc(err.message)}</div>`; $('bSavePlan').disabled = false; }
+}
+
+/* ================= DO ================= */
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
 function guessMeal() { const h = new Date().getHours() + new Date().getMinutes() / 60; return h < 10.5 ? 'Breakfast' : h < 14.5 ? 'Lunch' : h < 16.5 ? 'Snack' : h < 21 ? 'Dinner' : 'Snack'; }
 let meal = guessMeal();
@@ -136,11 +223,16 @@ function renderChips() { $('meals').innerHTML = MEALS.map(m => `<button class="c
   $('meals').querySelectorAll('.chip').forEach(c => c.onclick = () => { meal = c.dataset.m; renderChips(); }); }
 renderChips();
 
-/* ---------- photo → resize → send ---------- */
 $('bCam').onclick = () => $('fCam').click();
 $('bPick').onclick = () => $('fPick').click();
-$('fCam').onchange = e => handle(e.target.files[0], e.target);
-$('fPick').onchange = e => handle(e.target.files[0], e.target);
+$('fCam').onchange = e => sendPhoto(e.target.files[0], e.target);
+$('fPick').onchange = e => sendPhoto(e.target.files[0], e.target);
+$('bWords').onclick = () => {
+  const open = $('wordsBox').classList.toggle('hidden') === false;
+  $('bWords').classList.toggle('on', open);
+  $('note').classList.toggle('hidden', open);
+  if (open) $('words').focus();
+};
 
 function resize(file, max = 1280) {
   return new Promise((res, rej) => {
@@ -151,60 +243,113 @@ function resize(file, max = 1280) {
     img.onerror = () => rej(new Error('That photo could not be opened.')); img.src = url;
   });
 }
-function busy(on) { $('bCam').disabled = $('bPick').disabled = on; }
-async function handle(file, input) {
-  if (!file) return;
-  if (!KEY()) { $('keyCard').classList.remove('hidden'); $('keyIn').focus(); input.value = ''; return; }
+function busy(on) { ['bCam', 'bPick', 'bWords', 'bSendWords'].forEach(id => $(id).disabled = on); }
+async function logMeal(data, waitText, img) {
   busy(true); $('result').innerHTML = '';
-  $('status').innerHTML = `<div class="status"><div class="spin"></div>Looking at your plate… about 10–15 seconds</div>`;
+  $('status').innerHTML = `<div class="status"><div class="spin"></div>${waitText}</div>`;
+  try {
+    const d = await post('sh-meal', Object.assign({ meal, date: localDate(), time: localTime() }, data));
+    $('status').innerHTML = '';
+    $('result').innerHTML = mealCard(d.meal, img) + checkLine(d.check);
+    return true;
+  } catch (err) { $('status').innerHTML = `<div class="status err">${esc(err.message)}</div>`; return false; }
+  finally { busy(false); }
+}
+async function sendPhoto(file, input) {
+  if (!file) return;
+  if (needKey()) { input.value = ''; return; }
   try {
     const dataUrl = await resize(file);
-    const body = new URLSearchParams({ k: KEY(), image: dataUrl, mime: 'image/jpeg', meal, note: $('note').value.trim(), date: localDate(), time: localTime() });
-    const r = await fetch(API + 'sh-meal', { method: 'POST', body });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.ok) throw new Error(d.error || 'Something went wrong. Please try again.');
-    $('status').innerHTML = ''; $('note').value = '';
-    $('result').innerHTML = mealCard(d.meal, dataUrl);
-    loadSummary();
+    const ok = await logMeal({ image: dataUrl, mime: 'image/jpeg', note: $('note').value.trim() }, 'Looking at your plate… about 10–15 seconds', dataUrl);
+    if (ok) { $('note').value = ''; loadSummary(); }
   } catch (err) { $('status').innerHTML = `<div class="status err">${esc(err.message)}</div>`; }
-  finally { busy(false); input.value = ''; }
+  finally { input.value = ''; }
 }
+let spoken = false;
+$('words').addEventListener('input', () => { if (!recognising) spoken = false; });
+$('bSendWords').onclick = async () => {
+  const text = $('words').value.trim();
+  if (!text) { $('words').focus(); return; }
+  if (needKey()) return;
+  stopMic();
+  const ok = await logMeal({ text, source: spoken ? 'spoken' : 'typed' }, 'Estimating… about 5 seconds');
+  if (ok) { $('words').value = ''; spoken = false; loadSummary(); }
+};
+
+/* speech: built-in speech recognition where the browser has it; otherwise the keyboard's own mic works */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recognising = false;
+if (!SR) { $('bMic').classList.add('hidden'); $('micHint').textContent = 'Tip: tap the microphone on your keyboard to speak the meal.'; }
+function stopMic() { if (rec && recognising) rec.stop(); }
+$('bMic').onclick = () => {
+  if (recognising) { stopMic(); return; }
+  rec = new SR(); rec.lang = navigator.language || 'en-CA'; rec.interimResults = true; rec.continuous = false;
+  const before = $('words').value.trim();
+  rec.onstart = () => { recognising = true; $('bMic').classList.add('live'); $('micHint').textContent = 'Listening… say what you ate.'; };
+  rec.onresult = e => { const said = Array.from(e.results).map(r => r[0].transcript).join(' ');
+    $('words').value = (before ? before + ' ' : '') + said; spoken = true; };
+  rec.onerror = e => { $('micHint').textContent = e.error === 'not-allowed' ? 'Microphone is blocked for this page. You can type, or use the keyboard mic.' : 'Did not catch that. Try again or type it.'; };
+  rec.onend = () => { recognising = false; $('bMic').classList.remove('live'); if ($('micHint').textContent.startsWith('Listening')) $('micHint').textContent = 'Check the text, then tap Log this meal.'; };
+  rec.start();
+};
+
 function nums(m) {
   return `<div class="nums">
     <span class="num">Protein <b>${m.protein_g} g</b></span><span class="num">Fibre <b>${m.fibre_g} g</b></span>
     <span class="num">Fruit/veg <b>${m.fruit_veg_servings}</b></span><span class="num">Carbs <b>${m.carbs_g} g</b></span>
     <span class="num">Fat <b>${m.fat_g} g</b></span><span class="num">~<b>${m.calories}</b> kcal</span></div>`;
 }
-function coachBox(m) {
-  if (!m.suggestion) return '';
-  return `<div class="coach"><div class="who">Coach</div>${esc(m.suggestion)}${m.add_item ? `<div class="item">🛒 ${esc(m.add_item)}</div>` : ''}</div>`;
-}
 function mealCard(m, img) {
-  return `<div class="result"><img src="${img}" alt=""><div><div class="desc">${esc(m.meal ? m.meal + ' · ' : '')}${esc(m.description)}</div>
-    <div class="items">${esc(m.items)}</div></div></div>${nums(m)}${coachBox(m)}
+  return `<div class="result ${img ? '' : 'noimg'}">${img ? `<img src="${img}" alt="">` : ''}<div>
+    <div class="desc">${esc(m.meal ? m.meal + ' · ' : '')}${esc(m.description)}</div>
+    <div class="items">${esc(m.items)}</div></div></div>${nums(m)}
     <div class="note">Confidence: ${esc(m.confidence || '?')}${m.notes ? ' · ' + esc(m.notes) : ''}</div>`;
 }
+function checkLine(c) {
+  if (!c || !c.has_plan || !c.vs_plan.length) return '';
+  return `<div class="note" style="margin-top:12px"><b style="color:var(--text)">Today so far vs your plan:</b> ` +
+    c.vs_plan.map(v => `${esc(v.label)} ${v.actual} of ${v.plan}${v.unit === 'servings' ? '' : ' ' + esc(v.unit)}`).join(' · ') + '</div>';
+}
 
-/* ---------- today + week ---------- */
+/* ================= CHECK ================= */
+function vsBars(list) {
+  return `<div class="vs">${list.map(v => `
+    <div class="line"><b>${esc(v.label)}</b><span>${v.actual} of ${v.plan} ${esc(v.unit)}</span></div>
+    <div class="bar"><i style="width:${Math.min(100, Math.max(0, v.pct))}%"></i></div>`).join('')}</div>`;
+}
 async function loadSummary() {
-  if (!KEY()) { $('todayCard').innerHTML = '<div class="status">Add your Coach address above.</div>'; return; }
+  if (!KEY()) { $('todayCard').innerHTML = '<div class="status">Add your private address above.</div>'; $('planCard').innerHTML = ''; return; }
   try {
     const d = await fetch(`${API}sh-summary?k=${encodeURIComponent(KEY())}&date=${localDate()}`, { cache: 'no-store' }).then(r => r.json());
     if (!d.ok) throw new Error(d.error || 'Could not load today.');
+    plan = d.plan && d.plan.updated_at ? d.plan : null;
+    if (!editingPlan) renderPlan();
     const t = d.today.totals;
-    $('todayCard').innerHTML = `<div class="totals">
-        <div><b>${t.protein_g}</b><span>protein g</span></div><div><b>${t.fibre_g}</b><span>fibre g</span></div>
-        <div><b>${t.fruit_veg_servings}</b><span>fruit/veg</span></div><div><b>${d.today.meals.length}</b><span>meals</span></div></div>` +
-      (d.today.meals.length ? d.today.meals.map(m => `<div class="meal"><div class="t">${esc(m.time)} · ${esc(m.meal || 'Meal')}</div>
-        <div class="desc">${esc(m.description)}</div>${coachBox(m)}</div>`).join('') : '<div class="note" style="margin-top:12px">No meals logged yet today.</div>');
-    $('weekCard').innerHTML = `<table><tr><th>Day</th><th>Meals</th><th>Protein</th><th>Fibre</th><th>Fruit/veg</th></tr>` +
+    const top = plan && d.today.vs_plan.length ? vsBars(d.today.vs_plan)
+      : `<div class="totals">
+          <div><b>${t.protein_g}</b><span>protein g</span></div><div><b>${t.fibre_g}</b><span>fibre g</span></div>
+          <div><b>${t.fruit_veg_servings}</b><span>fruit/veg</span></div><div><b>${d.today.meals.length}</b><span>meals</span></div></div>
+         <div class="note">Set your plan above to see today against your own targets.</div>`;
+    $('todayCard').innerHTML = top + `<div style="margin-top:10px">` + (d.today.meals.length
+      ? d.today.meals.map(m => `<div class="meal"><div class="t">${esc(m.time)} · ${esc(m.meal || 'Meal')}<span class="src">${esc(m.source === 'photo' ? '📷 photo' : m.source === 'spoken' ? '🎤 spoken' : '⌨️ typed')}</span></div>
+          <div class="desc">${esc(m.description)}</div></div>`).join('')
+      : '<div class="note">No meals logged yet today.</div>') + '</div>';
+
+    const keys = plan ? ['protein_g', 'fibre_g', 'fruit_veg_servings'].filter(k => Number(plan[k]) > 0) : [];
+    const cols = keys.length ? keys : ['protein_g', 'fibre_g', 'fruit_veg_servings'];
+    const head = { protein_g: 'Protein', fibre_g: 'Fibre', fruit_veg_servings: 'Fruit/veg' };
+    const unit = k => k === 'fruit_veg_servings' ? '' : ' g';
+    $('weekCard').innerHTML = `<table><tr><th>Day</th><th>Meals</th>${cols.map(k => `<th>${head[k]}</th>`).join('')}</tr>` +
+      (plan ? `<tr class="plan"><td>Plan</td><td></td>${cols.map(k => `<td>${esc(plan[k])}${unit(k)}</td>`).join('')}</tr>` : '') +
       d.week.days.map(x => { const day = new Date(x.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short' });
-        return x.meals ? `<tr><td>${day}</td><td>${x.meals}</td><td>${x.protein_g} g</td><td>${x.fibre_g} g</td><td>${x.fruit_veg_servings}</td></tr>`
-                       : `<tr><td>${day}</td><td class="none" colspan="4">—</td></tr>`; }).join('') + `</table>`;
-  } catch (err) { $('todayCard').innerHTML = `<div class="status err">${esc(err.message)}</div>`; }
+        return x.meals ? `<tr><td>${day}</td><td>${x.meals}</td>${cols.map(k => `<td>${x[k]}${unit(k)}</td>`).join('')}</tr>`
+                       : `<tr><td>${day}</td><td class="none" colspan="${cols.length + 1}">—</td></tr>`; }).join('') + `</table>` +
+      (d.week.days_logged ? `<div class="note">Average on the ${d.week.days_logged} day${d.week.days_logged > 1 ? 's' : ''} you logged: ` +
+        cols.map(k => `${head[k]} ${d.week.avg_per_logged_day[k]}${unit(k)}`).join(' · ') + '</div>' : '');
+  } catch (err) { $('todayCard').innerHTML = `<div class="status err">${esc(err.message)}</div>`; if (!plan && !editingPlan) renderPlan(); }
 }
 
-/* ---------- ask ---------- */
+/* ================= ACT ================= */
 function md(s) {   // tiny markdown: **bold**, - bullets, paragraphs
   const lines = esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split('\n');
   let out = '', inList = false;
@@ -214,16 +359,16 @@ function md(s) {   // tiny markdown: **bold**, - bullets, paragraphs
   }
   return out + (inList ? '</ul>' : '');
 }
-$('bAsk').onclick = async () => {
-  const q = $('q').value.trim(); if (!q) { $('q').focus(); return; }
-  $('bAsk').disabled = true; $('answer').innerHTML = `<div class="status"><div class="spin"></div>Thinking…</div>`;
-  try {
-    const d = await fetch(API + 'sh-ask', { method: 'POST', body: new URLSearchParams({ k: KEY(), question: q, date: localDate() }) }).then(r => r.json());
-    if (!d.ok) throw new Error(d.error || 'No answer came back.');
-    $('answer').innerHTML = `<div class="answer">${md(d.answer)}</div>`;
-  } catch (err) { $('answer').innerHTML = `<div class="status err">${esc(err.message)}</div>`; }
-  finally { $('bAsk').disabled = false; }
-};
+async function ask(question) {
+  if (needKey()) return;
+  $('bAsk').disabled = $('bGap').disabled = true;
+  $('answer').innerHTML = `<div class="status"><div class="spin"></div>Thinking…</div>`;
+  try { const d = await post('sh-ask', { question, date: localDate() }); $('answer').innerHTML = `<div class="answer">${md(d.answer)}</div>`; }
+  catch (err) { $('answer').innerHTML = `<div class="status err">${esc(err.message)}</div>`; }
+  finally { $('bAsk').disabled = $('bGap').disabled = false; }
+}
+$('bGap').onclick = () => ask('');
+$('bAsk').onclick = () => { const q = $('q').value.trim(); if (!q) { $('q').focus(); return; } ask(q); };
 
 loadSummary();
 </script>
