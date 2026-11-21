@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Morning Brief on Meta Ray-Ban Display: today's local news, events, national news and stocks as clean swipe-through cards, or read aloud.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>Morning Brief</title>
+<style>
+  /* Morning Brief for the glasses.
+     Muse writes the brief to Google Sheets at 6 AM; n8n hands the newest one to this page.
+     Additive display: black = see-through, so bright text on black. One story per card. */
+  :root {
+    --accent: #ffc44d;   /* morning gold */
+    --text: #ffffff;
+    --dim: #a9b7be;
+    --up: #6ee7a8; --down: #ff9a8a;
+    --focus: #ffd84a;
+    --u: min(1vw, 1vh);  /* 600x600 => 6px */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; padding: calc(var(--u) * 3.5); gap: calc(var(--u) * 2); }
+  .screen.active { display: flex; }
+  button { font: inherit; color: inherit; background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.5);
+    cursor: pointer; padding: calc(var(--u) * 2.2) calc(var(--u) * 1.5); font-size: calc(var(--u) * 4.4); font-weight: 700; }
+  button.go { background: #2b2108; border-color: var(--accent); }
+  button:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u) * .6) var(--focus); }
+  .msg { color: var(--dim); font-size: calc(var(--u) * 4.4); line-height: 1.35; text-align: center; margin: auto 0; }
+  .spin { width: calc(var(--u) * 8); height: calc(var(--u) * 8); margin: 0 auto calc(var(--u) * 3); border-radius: 50%;
+    border: calc(var(--u) * 1) solid #222; border-top-color: var(--accent); animation: s .8s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+
+  /* ---------- home ---------- */
+  .kicker { color: var(--accent); font-size: calc(var(--u) * 3.8); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .day { font-size: calc(var(--u) * 8); font-weight: 800; line-height: 1.05; }
+  .hello { color: var(--dim); font-size: calc(var(--u) * 4); line-height: 1.35; }
+  .stale { color: var(--down); font-size: calc(var(--u) * 3.6); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 1.8); }
+  .sections { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 1.6); margin-top: auto; }
+  .sections button { text-align: left; font-size: calc(var(--u) * 4); padding: calc(var(--u) * 2) calc(var(--u) * 2.4); display: flex; justify-content: space-between; align-items: baseline; gap: calc(var(--u) * 1); }
+  .sections button span { color: var(--dim); font-weight: 600; font-size: calc(var(--u) * 3.4); }
+
+  /* ---------- card ---------- */
+  .bar { display: flex; justify-content: space-between; align-items: baseline; }
+  .sec { color: var(--accent); font-size: calc(var(--u) * 4); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .sec small { color: var(--dim); font-weight: 600; letter-spacing: 0; text-transform: none; margin-left: calc(var(--u) * 1.4); }
+  .count { color: var(--dim); font-size: calc(var(--u) * 3.6); }
+  .dots { display: flex; gap: calc(var(--u) * .8); }
+  .dots i { flex: 1; height: calc(var(--u) * .7); background: #262626; border-radius: 99px; }
+  .dots i.on { background: var(--accent); }
+  #body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: calc(var(--u) * 2.2); }
+  .head { font-weight: 800; line-height: 1.18; }
+  .detail { color: var(--dim); line-height: 1.35; }
+  .para { line-height: 1.4; }
+  .list { display: flex; flex-direction: column; gap: calc(var(--u) * 1.2); }
+  .list div { display: flex; justify-content: space-between; gap: calc(var(--u) * 2); border-bottom: 1px solid #1f1f1f; padding-bottom: calc(var(--u) * .8); }
+  .list b { font-weight: 800; }
+  .list .dn { color: var(--down); } .list .up { color: var(--up); }
+  .list span { color: var(--dim); white-space: nowrap; }
+  .ctl { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: calc(var(--u) * 1.6); }
+  #bRead.on { background: #2b2108; border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<section class="screen active" id="home">
+  <div class="msg"><div class="spin"></div>Getting your brief…</div>
+</section>
+
+<section class="screen" id="card">
+  <div class="bar"><div class="sec" id="secName"></div><div class="count" id="count"></div></div>
+  <div class="dots" id="dots"></div>
+  <div id="body"></div>
+  <div class="ctl">
+    <button id="bPrev">◀ Back</button>
+    <button id="bRead">🔊 Read</button>
+    <button class="go" id="bNext">Next ▶</button>
+  </div>
+</section>
+
+<script>
+const API = 'https://n8n.rainandwind.ca/webhook/glasses-brief';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+(() => { const k = new URLSearchParams(location.search).get('k'); if (k) store.set('brief.key', k); })();
+const KEY = () => store.get('brief.key', '');
+const pad = n => String(n).padStart(2, '0');
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+
+/* =====================================================================
+   Turn Muse's markdown brief into cards.
+   "# title", greeting paragraph, "## Section — subtitle", "- **Headline** detail" bullets, paragraphs.
+   ===================================================================== */
+const plain = s => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').trim();
+const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+function parseBrief(md) {
+  const out = { title: '', greeting: '', signoff: '', sections: [] };
+  let sec = null;
+  const lines = md.replace(/\r/g, '').split('\n');
+  const paras = [];   // [{sec, text}] collected in order with bullets
+  for (const raw of lines) {
+    const l = raw.trim();
+    if (!l) continue;
+    if (/^#\s+/.test(l)) { out.title = l.replace(/^#\s+/, ''); continue; }
+    if (/^##\s+/.test(l)) {
+      const t = l.replace(/^##\s+/, '');
+      const [name, ...rest] = t.split(/\s+[—–-]\s+/);
+      sec = { name: name.trim(), sub: rest.join(' — ').trim(), items: [] };
+      out.sections.push(sec); continue;
+    }
+    if (/run id/i.test(l)) continue;                                  // housekeeping line from the worker
+    if (/^[-*•]\s+/.test(l)) {
+      const t = l.replace(/^[-*•]\s+/, '');
+      const m = t.match(/^\*\*(.+?)\*\*\s*(.*)$/);
+      const item = m ? { kind: 'story', head: m[1].replace(/[.:]$/, ''), detail: m[2].replace(/^[—–\-:,.;]\s*/, '') }
+                     : { kind: 'story', head: plain(t), detail: '' };
+      if (sec) sec.items.push(item);
+      continue;
+    }
+    if (!sec) { out.greeting += (out.greeting ? ' ' : '') + plain(l); continue; }
+    if (/:$/.test(l) && l.length < 70) continue;                      // "Here's what's happening close to home:"
+    sec.items.push({ kind: 'para', text: l });
+  }
+  // Sign-off: the brief's very last paragraph, when it is a goodbye line.
+  const last = out.sections[out.sections.length - 1];
+  if (last && last.items.length) {
+    const end = last.items[last.items.length - 1];
+    if (end.kind === 'para' && /that's the (morning|brief)|have a (good|great)|enjoy/i.test(end.text)) { out.signoff = plain(end.text); last.items.pop(); }
+  }
+  // Runs of short stories (like a list of stocks) become compact list cards of up to 6 rows.
+  for (const s of out.sections) {
+    const merged = []; let run = [];
+    const flush = () => {
+      if (run.length >= 4) for (let i = 0; i < run.length; i += 6) merged.push({ kind: 'list', rows: run.slice(i, i + 6) });
+      else merged.push(...run);
+      run = [];
+    };
+    for (const it of s.items) {
+      if (it.kind === 'story' && (it.head + ' ' + it.detail).length <= 60) run.push(it);
+      else { flush(); merged.push(it); }
+    }
+    flush();
+    s.items = merged;
+  }
+  out.sections = out.sections.filter(s => s.items.length);
+  return out;
+}
+
+/* ---------- build the deck ---------- */
+let brief = null, deck = [], at = 0;
+function buildDeck() {
+  deck = [];
+  brief.parsed.sections.forEach((s, si) => s.items.forEach((it, ii) => deck.push({ si, ii, n: s.items.length, sec: s, it })));
+  deck.push({ end: true });
+}
+function cardSpeech(c) {
+  if (c.end) return brief.parsed.signoff || "That's the brief.";
+  const it = c.it;
+  const intro = c.ii === 0 ? c.sec.name + '. ' : '';
+  if (it.kind === 'para') return intro + plain(it.text);
+  if (it.kind === 'list') return intro + it.rows.map(r => `${r.head} ${r.detail}`).join('. ');
+  return intro + it.head + '. ' + it.detail;
+}
+const spoken = s => s.replace(/\bC\$/g, 'Canadian $').replace(/—/g, ', ').replace(/\s+/g, ' ');
+
+/* ---------- screens + Back ---------- */
+function show(id, focusId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  if (focusId) setTimeout(() => { const el = $(focusId); el && el.focus(); }, 0);
+}
+window.addEventListener('popstate', () => { stopReading(); renderHome(); show('home', 'bStart'); });
+
+function renderHome() {
+  if (!brief) return;
+  const p = brief.parsed;
+  const d = brief.date ? new Date(brief.date + 'T12:00:00') : null;
+  const day = d ? d.toLocaleDateString(undefined, { weekday: 'long' }) : 'Morning brief';
+  const dateLine = d ? d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) : '';
+  const stale = brief.date && brief.date !== todayISO();
+  $('home').innerHTML = `
+    <div class="kicker">Morning brief${dateLine ? ' · ' + esc(dateLine) : ''}</div>
+    <div class="day">${esc(day)}</div>
+    ${stale ? `<div class="stale">Today's brief isn't in yet. This is the latest one.</div>` : ''}
+    ${brief.offline ? `<div class="stale">Offline: showing the saved copy.</div>` : ''}
+    <div class="hello">${esc(p.greeting).slice(0, 160)}</div>
+    <div class="row2">
+      <button class="go" id="bStart">Start ▶</button>
+      <button id="bListen">🔊 Read to me</button>
+    </div>
+    <div class="sections">${p.sections.map((s, i) => `<button data-s="${i}">${esc(s.name)}<span>${s.items.length}</span></button>`).join('')}</div>`;
+  $('bStart').onclick = () => openAt(0);
+  $('bListen').onclick = () => { openAt(0); startReading(); };
+  $('home').querySelectorAll('.sections button').forEach(b => b.onclick = () => openAt(deck.findIndex(c => c.si === +b.dataset.s)));
+}
+function openAt(i) {
+  if (!document.getElementById('card').classList.contains('active')) history.pushState({ screen: 'card' }, '');
+  at = Math.max(0, Math.min(deck.length - 1, i));
+  renderCard();
+  show('card', 'bNext');
+}
+
+/* ---------- one card ---------- */
+function renderCard() {
+  const c = deck[at];
+  const body = $('body');
+  if (c.end) {
+    $('secName').innerHTML = 'Done';
+    $('count').textContent = '';
+    $('dots').innerHTML = '';
+    body.innerHTML = `<div class="para" style="text-align:center">${esc(brief.parsed.signoff || "That's the brief.")}</div>`;
+    $('bNext').textContent = 'Finish';
+  } else {
+    $('secName').innerHTML = esc(c.sec.name) + (c.sec.sub ? `<small>${esc(c.sec.sub)}</small>` : '');
+    $('count').textContent = `${c.ii + 1} / ${c.n}`;
+    $('dots').innerHTML = Array.from({ length: c.n }, (_, i) => `<i class="${i <= c.ii ? 'on' : ''}"></i>`).join('');
+    const it = c.it;
+    if (it.kind === 'para') body.innerHTML = `<div class="para">${inline(it.text)}</div>`;
+    else if (it.kind === 'list') body.innerHTML = `<div class="list">${it.rows.map(r => {
+        const dir = /\bdown\b/i.test(r.head) ? 'dn' : /\bup\b/i.test(r.head) ? 'up' : '';
+        return `<div><b class="${dir}">${esc(r.head)}</b><span>${esc(r.detail)}</span></div>`; }).join('')}</div>`;
+    else body.innerHTML = `<div class="head">${esc(it.head)}</div>${it.detail ? `<div class="detail">${inline(it.detail)}</div>` : ''}`;
+    const nxt = deck[at + 1];
+    $('bNext').textContent = nxt && !nxt.end && nxt.si !== c.si ? `${nxt.sec.name} ▶` : 'Next ▶';
+  }
+  $('bPrev').disabled = at === 0;
+  fit();
+}
+// Shrink text until the card fits the display, so nothing needs scrolling.
+function fit() {
+  const body = $('body');
+  const sizes = { head: [7, 4.6], detail: [4.8, 3.6], para: [5.2, 3.6], list: [4.6, 3.4] };
+  const els = [...body.querySelectorAll('.head,.detail,.para,.list')];
+  let step = 0;
+  const apply = () => els.forEach(el => { const k = el.className.split(' ')[0]; const [hi, lo] = sizes[k]; el.style.fontSize = `calc(var(--u) * ${Math.max(lo, hi - step * 0.3)})`; });
+  apply();
+  while (body.scrollHeight > body.clientHeight + 2 && step < 14) { step++; apply(); }
+}
+$('bNext').onclick = () => { if (deck[at].end) { history.back(); return; } stopReading(); at++; renderCard(); };
+$('bPrev').onclick = () => { if (at > 0) { stopReading(); at--; renderCard(); } };
+
+/* ---------- read aloud (the glasses have one built-in voice) ---------- */
+let reading = false;
+const canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+if (!canSpeak) $('bRead').style.visibility = 'hidden';
+function speakCard() {
+  if (!reading) return;
+  const u = new SpeechSynthesisUtterance(spoken(cardSpeech(deck[at])));
+  u.lang = 'en-US'; u.rate = 1.0;
+  u.onend = () => {
+    if (!reading) return;
+    if (deck[at].end) { stopReading(); return; }
+    at++; renderCard(); setTimeout(speakCard, 350);
+  };
+  u.onerror = () => stopReading();
+  speechSynthesis.speak(u);
+}
+function startReading() {
+  if (!canSpeak) return;
+  reading = true; $('bRead').classList.add('on'); $('bRead').textContent = '■ Stop';
+  speechSynthesis.cancel(); setTimeout(speakCard, 150);
+}
+function stopReading() {
+  if (!reading) return;
+  reading = false; $('bRead').classList.remove('on'); $('bRead').textContent = '🔊 Read';
+  try { speechSynthesis.cancel(); } catch (e) {}
+}
+$('bRead').onclick = () => reading ? stopReading() : startReading();
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopReading(); });
+
+/* ---------- load ---------- */
+async function load() {
+  if (!KEY()) { $('home').innerHTML = `<div class="msg">This copy has no key.<br>Add the app on the glasses using the full address that ends in ?k=…</div>`; return; }
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 10000);
+    const d = await fetch(`${API}?k=${encodeURIComponent(KEY())}`, { cache: 'no-store', signal: ctrl.signal }).then(r => r.json());
+    clearTimeout(t);
+    if (!d.ok) throw new Error(d.error || 'No brief came back.');
+    brief = d; store.set('brief.last', d);
+  } catch (e) {
+    const saved = store.get('brief.last', null);
+    if (!saved) { $('home').innerHTML = `<div class="msg">Couldn't get the brief.<br>${esc(e.message)}</div>`; return; }
+    brief = Object.assign({}, saved, { offline: true });
+  }
+  brief.parsed = parseBrief(brief.full_text || brief.news_summary || '');
+  buildDeck();
+  renderHome(); show('home', 'bStart');
+}
+
+/* ---------- voice tools for Meta AI (WebMCP) ---------- */
+const reply = text => ({ content: [{ type: 'text', text }] });
+const findSection = name => brief ? brief.parsed.sections.findIndex(s => s.name.toLowerCase().includes(String(name || '').toLowerCase().replace(/s$/, ''))) : -1;
+const TOOLS = [
+  { name: 'read_brief', description: 'Read the morning brief aloud on the glasses, card by card. Optional section: local news, events, national news or stocks.',
+    inputSchema: { type: 'object', properties: { section: { type: 'string', description: 'Section to start from, e.g. "stocks"' } } },
+    execute: async ({ section } = {}) => { if (!brief) return reply('The brief has not loaded yet.'); const si = section ? findSection(section) : 0;
+      openAt(si > 0 ? deck.findIndex(c => c.si === si) : 0); startReading(); return reply('Reading the brief.'); } },
+  { name: 'show_section', description: 'Show one section of the morning brief: local news, events, national news or stocks.',
+    inputSchema: { type: 'object', properties: { section: { type: 'string' } }, required: ['section'] },
+    execute: async ({ section }) => { const si = findSection(section); if (si < 0) return reply('That section is not in today\'s brief.'); openAt(deck.findIndex(c => c.si === si)); return reply(`Showing ${brief.parsed.sections[si].name}.`); } },
+  { name: 'next_story', description: 'Go to the next card of the morning brief.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { if (!brief) return reply('Not loaded.'); stopReading(); openAt(at + 1); return reply('Next.'); } },
+  { name: 'stop_reading', description: 'Stop reading the brief aloud.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { stopReading(); return reply('Stopped.'); } },
+  { name: 'get_brief_summary', description: 'Get the short spoken summary of today\'s morning brief (news and stocks) to answer questions about it.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => brief ? reply(`Brief for ${brief.date}. ${brief.news_summary} ${brief.stocks_summary}`) : reply('Not loaded.') }
+];
+(function registerVoiceTools() {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || typeof mc.registerTool !== 'function') return;
+  for (const t of TOOLS) { try { const p = mc.registerTool(t); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+})();
+
+history.replaceState({ screen: 'home' }, '');
+load();
+</script>
+</body>
+</html>
