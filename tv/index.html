@@ -90,7 +90,7 @@
 
 <section class="screen" id="swipe">
   <button id="swipeCatch" aria-label="Swipe to move on the TV"></button>
-  <div class="big"><b>Swipe mode</b><span>Swipe = move on the TV<br>Pinch = OK<br>Swipe back = leave</span></div>
+  <div class="big"><b>Swipe mode</b><span>Swipe = move on the TV<br>Pinch = OK<br><b style="display:inline;font-size:inherit;color:var(--warn);margin:0">Double-pinch = back to remote</b></span></div>
   <div id="swipeLast"></div>
 </section>
 
@@ -228,15 +228,32 @@ $('bClose').onclick = () => {
 /* ---------- swipe mode: glasses swipes become TV arrows ---------- */
 const ARROWS = { ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', Enter: 'ENTER', ' ': 'ENTER' };
 const SHOW = { UP: '▲', DOWN: '▼', LEFT: '◀', RIGHT: '▶', ENTER: 'OK' };
-$('bSwipe').onclick = () => go('swipe', 'swipeCatch');
+$('bSwipe').onclick = () => { $('swipeLast').textContent = ''; go('swipe', 'swipeCatch'); swipeAlive(); };
+let swipeIdle, pinchT = null;
+function exitSwipe() {
+  clearTimeout(swipeIdle); clearTimeout(pinchT); pinchT = null;
+  if (screen !== 'swipe') return;
+  if (history.state && history.state.screen === 'swipe') history.back(); else show('main', 'bSwipe');
+  setTimeout(() => { if (screen === 'swipe') show('main', 'bSwipe'); }, 300);
+}
+function swipeAlive() { clearTimeout(swipeIdle); swipeIdle = setTimeout(exitSwipe, 120000); }   // leave by itself after 2 idle minutes
+// one pinch = OK (sent after a short wait); two quick pinches = back to the remote
+function pinch() {
+  swipeAlive();
+  if (pinchT) { clearTimeout(pinchT); pinchT = null; $('swipeLast').textContent = ''; exitSwipe(); return; }
+  pinchT = setTimeout(() => { pinchT = null; $('swipeLast').textContent = 'OK'; press('ENTER'); }, 380);
+}
 document.addEventListener('keydown', e => {
   if (screen !== 'swipe') return;
+  if (['Escape', 'Backspace', 'BrowserBack', 'GoBack'].includes(e.key)) { e.preventDefault(); exitSwipe(); return; }
   const name = ARROWS[e.key]; if (!name) return;
   e.preventDefault(); e.stopPropagation();
+  if (name === 'ENTER') { pinch(); return; }
+  swipeAlive();
   $('swipeLast').textContent = SHOW[name];
   press(name);
 }, true);
-$('swipeCatch').onclick = () => { $('swipeLast').textContent = 'OK'; press('ENTER'); };   // a pinch arrives as a click (keyboard Enter is caught above)
+$('swipeCatch').onclick = () => pinch();   // a pinch arrives as a click (keyboard Enter is caught above)
 $('swipeCatch').addEventListener('blur', () => { if (screen === 'swipe') setTimeout(() => $('swipeCatch').focus(), 0); });
 
 /* ---------- apps ---------- */
