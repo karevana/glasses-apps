@@ -200,8 +200,10 @@ function readable(html, base) {
     chars += t.length; last = t;
     if (chars > 40000) break;
   }
-  if (title && blocks.length && blocks[0].tag === 'h1' && blocks[0].text.toLowerCase() === title.toLowerCase()) blocks.shift();
-  else if (blocks.length && blocks.slice(0, 4).some(b => b.tag === 'h1' && b.text.toLowerCase() === title.toLowerCase())) blocks.splice(blocks.findIndex(b => b.tag === 'h1'), 1);
+  // The headline is shown once at the top, so drop it from the first few blocks.
+  const same = b => b.text.toLowerCase() === title.toLowerCase() && /^(h1|h2|h3|p)$/.test(b.tag);
+  const dup = blocks.slice(0, 4).findIndex(same);
+  if (title && dup >= 0) blocks.splice(dup, 1);
   const rootLinks = collectLinks(root, base);
   const links = rootLinks.length >= 8 ? rootLinks : allLinks;
   const textChars = blocks.filter(b => b.tag === 'p' || b.tag === 'blockquote').reduce((a, b) => a + b.text.length, 0);
@@ -232,8 +234,14 @@ async function fetchPage(url) {
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 25000);
     let d;
     try { d = await fetch(`${API}?k=${encodeURIComponent(KEY())}&url=${encodeURIComponent(url)}`, { cache: 'no-store', signal: ctrl.signal }).then(r => r.json()); }
-    catch (e) { throw new Error(e.name === 'AbortError' ? 'That site took too long.' : 'Could not reach your n8n.'); }
+    catch (e) {
+      clearTimeout(t);
+      if (!fetchPage.retried) { fetchPage.retried = true; hop--; $('waitMsg').textContent = 'Still trying…'; continue; }   // one quiet retry: sites sometimes stall
+      fetchPage.retried = false;
+      throw new Error(e.name === 'AbortError' ? 'That site took too long.' : 'Could not reach your n8n.');
+    }
     finally { clearTimeout(t); }
+    fetchPage.retried = false;
     if (!d.ok) throw new Error(d.error || 'That page could not be opened.');
     if (d.redirect) { url = d.redirect; continue; }
     return { url: d.url, html: d.html || '' };
