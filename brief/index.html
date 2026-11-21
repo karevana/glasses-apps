@@ -60,7 +60,11 @@
   .list div { display: flex; justify-content: space-between; gap: calc(var(--u) * 2); border-bottom: 1px solid #1f1f1f; padding-bottom: calc(var(--u) * .8); }
   .list b { font-weight: 800; }
   .list .dn { color: var(--down); } .list .up { color: var(--up); }
-  .list span { color: var(--dim); white-space: nowrap; }
+  .list b { flex: 0 0 auto; max-width: 58%; }
+  .list span { color: var(--dim); text-align: right; }
+  .top { margin-top: calc(var(--u) * 1); border-left: calc(var(--u) * .8) solid var(--accent); padding-left: calc(var(--u) * 2.4); }
+  .top small { display: block; color: var(--accent); font-size: calc(var(--u) * 3.2); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .top div { font-size: calc(var(--u) * 4.6); font-weight: 700; line-height: 1.25; }
   .ctl { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: calc(var(--u) * 1.6); }
   #bRead.on { background: #2b2108; border-color: var(--accent); color: var(--accent); }
 </style>
@@ -193,6 +197,7 @@ function renderHome() {
       <button class="go" id="bStart">Start ▶</button>
       <button id="bListen">🔊 Read to me</button>
     </div>
+    ${p.sections[0] && p.sections[0].items.find(i => i.kind === 'story') ? `<div class="top"><small>Top story</small><div>${esc(p.sections[0].items.find(i => i.kind === 'story').head)}</div></div>` : ''}
     <div class="sections">${p.sections.map((s, i) => `<button data-s="${i}">${esc(s.name)}<span>${s.items.length}</span></button>`).join('')}</div>`;
   $('bStart').onclick = () => openAt(0);
   $('bListen').onclick = () => { openAt(0); startReading(); };
