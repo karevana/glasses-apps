@@ -10,6 +10,7 @@ Web apps for Meta Ray-Ban Display glasses (600×600 display), served with GitHub
 | Morning Brief | https://karevana.github.io/glasses-apps/brief/ (needs Karen's private ?k= key) | Muse's 6 AM brief (local news, events, national, stocks) as swipe-through cards, or read aloud |
 | Reader | https://karevana.github.io/glasses-apps/reader/ (needs Karen's private ?k= key) | Simple page viewer: open a site or look up a topic, read big clean text, follow numbered links, read aloud |
 | To-Do | https://karevana.github.io/glasses-apps/todo/ (needs Karen's private ?k= key) | Say a to-do, check it off; a reminder time becomes a Google Calendar pop-up on the glasses |
+| TV Remote | https://karevana.github.io/glasses-apps/tv/ (needs Karen's private ?k= key) | Control the LG TV: power, volume, arrows, apps, YouTube; works through the small relay on Karen's PC |
 | Edit Songbook | https://karevana.github.io/glasses-apps/songbook/edit.html | Computer/phone page to fix a song's chords, lyrics or tempo line and save it back to its Google Doc |
 | Tilt Test | https://karevana.github.io/glasses-apps/tilt-test/ | Checks whether a deliberate head tilt can be detected, for hands-free song scrolling |
 

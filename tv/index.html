@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="TV Remote for Meta Ray-Ban Display: control Karen's LG TV - power, volume, arrows, apps, YouTube - by tapping or by asking Meta AI.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>TV Remote</title>
+<style>
+  /* TV Remote for the glasses (also works on a phone).
+     Commands go to the small relay program on Karen's PC (AI-glasses ap\tv-remote), which talks to the LG TV.
+     The relay's address changes now and then; the app asks Karen's n8n for the current one. */
+  :root { --accent: #7cc4ff; --text: #fff; --dim: #a9b7be; --warn: #ffc44d; --focus: #ffd84a; --ok: #8fe388;
+          --u: min(1vw, 1vh, 6px); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; margin: 0 auto; max-width: 600px; display: none; flex-direction: column; padding: calc(var(--u) * 3); gap: calc(var(--u) * 1.6); }
+  .screen.active { display: flex; }
+  button, input { font: inherit; color: inherit; }
+  button { background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.5); cursor: pointer;
+    padding: calc(var(--u) * 1.6) calc(var(--u) * 1); font-size: calc(var(--u) * 4.4); font-weight: 700; min-height: 0; }
+  button.go { background: #0c1f30; border-color: var(--accent); }
+  button.pw { color: #ff9a8a; }
+  button:focus, input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u) * .6) var(--focus); }
+  .top { display: flex; align-items: center; gap: calc(var(--u) * 2); }
+  h1 { margin: 0; font-size: calc(var(--u) * 6); color: var(--accent); }
+  #stat { flex: 1; color: var(--dim); font-size: calc(var(--u) * 3.5); line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .xbtn { padding: calc(var(--u) * 1.2) calc(var(--u) * 2.4); font-size: calc(var(--u) * 3.6); }
+  #toast { min-height: 1.3em; color: var(--ok); font-size: calc(var(--u) * 3.6); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #toast.warn { color: var(--warn); }
+  .row { display: grid; gap: calc(var(--u) * 1.4); }
+  .r4 { grid-template-columns: repeat(4, 1fr); }
+  .r3 { grid-template-columns: repeat(3, 1fr); }
+  #pad { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1.25fr 1fr; grid-template-rows: 1fr 1.15fr 1fr; gap: calc(var(--u) * 1.4); }
+  #pad button { font-size: calc(var(--u) * 6); }
+  #pad #kOk { font-size: calc(var(--u) * 5); background: #0c1f30; border-color: var(--accent); }
+  #pad .sm { font-size: calc(var(--u) * 3.8); color: var(--dim); }
+
+  /* swipe mode */
+  #swipe .big { margin: auto 0; text-align: center; }
+  #swipe .big b { display: block; font-size: calc(var(--u) * 7); color: var(--accent); margin-bottom: calc(var(--u) * 3); }
+  #swipe .big span { display: block; font-size: calc(var(--u) * 4.4); color: var(--dim); line-height: 1.6; }
+  #swipeLast { font-size: calc(var(--u) * 9); text-align: center; min-height: 1.2em; color: var(--focus); }
+  #swipeCatch { position: absolute; inset: 0; opacity: 0; }
+
+  /* lists */
+  .label { color: var(--dim); font-size: calc(var(--u) * 3.8); }
+  .list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: calc(var(--u) * 1.2); padding: calc(var(--u) * .8); scrollbar-width: none; }
+  .list::-webkit-scrollbar { display: none; }
+  .list button { flex: 0 0 auto; text-align: left; font-size: calc(var(--u) * 4.4); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 1.2); padding: calc(var(--u) * .8); }
+  .grid2 button { font-size: calc(var(--u) * 4.2); }
+  .vid { display: block; }
+  .vid small { display: block; color: var(--dim); font-size: calc(var(--u) * 3.2); font-weight: 600; margin-top: calc(var(--u) * .6); }
+  input[type=text] { width: 100%; background: #0d0d0d; border: calc(var(--u) * .5) solid #444; border-radius: calc(var(--u) * 2.5);
+    padding: calc(var(--u) * 2.4) calc(var(--u) * 3); font-size: calc(var(--u) * 4.6); }
+  input::placeholder { color: #7d8a90; }
+  .row2 { display: grid; grid-template-columns: 1fr 1.4fr; gap: calc(var(--u) * 1.6); }
+  .msg { color: var(--dim); font-size: calc(var(--u) * 4.2); line-height: 1.4; text-align: center; margin: auto 0; }
+  .spin { width: calc(var(--u) * 8); height: calc(var(--u) * 8); margin: 0 auto calc(var(--u) * 3); border-radius: 50%;
+    border: calc(var(--u) * 1) solid #222; border-top-color: var(--accent); animation: s .8s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<section class="screen active" id="main">
+  <div class="top"><h1>TV</h1><div id="stat">Connecting…</div><button class="xbtn" id="bClose">✕ Close</button></div>
+  <div class="row r4">
+    <button class="pw" id="bPower">⏻</button>
+    <button id="bMute">🔇</button>
+    <button id="bVolDn">Vol −</button>
+    <button id="bVolUp">Vol +</button>
+  </div>
+  <div id="pad">
+    <button class="sm" id="kBack">↩ Back</button><button id="kUp">▲</button><button class="sm" id="kHome">⌂ Home</button>
+    <button id="kLeft">◀</button><button id="kOk">OK</button><button id="kRight">▶</button>
+    <button class="sm" id="kPlay">⏯</button><button id="kDown">▼</button><button class="sm" id="bMore">⋯ More</button>
+  </div>
+  <div class="row r3">
+    <button class="go" id="bSwipe">✋ Swipe</button>
+    <button class="go" id="bApps">Apps</button>
+    <button class="go" id="bYt">▶ YouTube</button>
+  </div>
+  <div id="toast"></div>
+</section>
+
+<section class="screen" id="swipe">
+  <button id="swipeCatch" aria-label="Swipe to move on the TV"></button>
+  <div class="big"><b>Swipe mode</b><span>Swipe = move on the TV<br>Pinch = OK<br>Swipe back = leave</span></div>
+  <div id="swipeLast"></div>
+</section>
+
+<section class="screen" id="apps">
+  <div class="label">Open on the TV</div>
+  <div class="grid2" id="favs"></div>
+  <div class="label" id="allLabel">All apps</div>
+  <div class="list" id="allApps"><div class="msg"><div class="spin"></div>Loading apps…</div></div>
+</section>
+
+<section class="screen" id="yt">
+  <div class="label">Play on the TV from YouTube</div>
+  <input id="q" type="text" maxlength="120" placeholder="Pinch, then say what to play" autocomplete="off">
+  <div class="row2"><button id="bYtBack">Back</button><button class="go" id="bYtGo">Search</button></div>
+  <div class="list" id="ytList"></div>
+</section>
+
+<section class="screen" id="more">
+  <div class="label">More</div>
+  <div class="grid2">
+    <button id="mPlay">▶ Play</button><button id="mPause">⏸ Pause</button>
+    <button id="mRw">⏪ Rewind</button><button id="mFf">⏩ Forward</button>
+    <button id="mScreenOff">Screen off</button><button id="mScreenOn">Screen on</button>
+    <button id="mType">⌨ Type on TV</button><button id="mInputs">Inputs</button>
+  </div>
+  <div class="list" id="inputList"></div>
+  <button id="bMoreBack">Back</button>
+</section>
+
+<section class="screen" id="type">
+  <div class="label">Type into the TV's search box</div>
+  <input id="typeText" type="text" maxlength="120" placeholder="Pinch, then say it" autocomplete="off">
+  <div class="row2"><button id="bTypeBack">Back</button><button class="go" id="bTypeGo">Send to TV</button></div>
+  <div class="msg" style="font-size:calc(var(--u)*3.6)">Works when a search box is open on the TV. Some apps (like Netflix) use their own keyboard - use the arrows there.</div>
+</section>
+
+<script>
+const N8N = 'https://n8n.rainandwind.ca/webhook/';
+const TUBE = N8N + 'glasses-tube-search';
+const $ = id => document.getElementById(id);
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+(() => { const k = new URLSearchParams(location.search).get('k'); if (k) store.set('tv.key', k); })();
+const KEY = () => store.get('tv.key', '');
+
+/* ---------- talking to the relay ---------- */
+let relay = store.get('tv.url', '');
+async function findRelay() {
+  const r = await fetch(`${N8N}glasses-tv-url?k=${encodeURIComponent(KEY())}`, { cache: 'no-store' }).then(x => x.json());
+  if (!r.ok) throw new Error(r.error || 'Could not find the TV relay.');
+  relay = r.url; store.set('tv.url', relay); return relay;
+}
+async function post(url, data, ms) {
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { method: 'POST', body: new URLSearchParams(data), signal: ctrl.signal });
+    if (!res.ok && res.status !== 403) throw new Error('relay ' + res.status);
+    return await res.json();
+  } finally { clearTimeout(t); }
+}
+async function tv(a, params = {}) {
+  if (!KEY()) throw new Error('Open the app once from your private address (the one ending in ?k=…).');
+  const data = Object.assign({ k: KEY(), a }, params);
+  let r;
+  try { if (!relay) await findRelay(); r = await post(relay + '/cmd', data, 9500); }
+  catch (e) {
+    if (e.name === 'AbortError') throw new Error('The TV took too long to answer.');
+    const old = relay;                                   // address may have changed; ask n8n once and retry
+    await findRelay();
+    if (relay === old) throw new Error('Can\'t reach the PC. Is it on and awake?');
+    r = await post(relay + '/cmd', data, 9500);
+  }
+  if (!r.ok) throw new Error(r.error || 'The TV did not do that.');
+  if (r.tv || r.volume !== undefined) showStatus(r);
+  return r;
+}
+
+/* ---------- screens + messages ---------- */
+let screen = 'main';
+function show(id, focusId) {
+  screen = id;
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  const f = focusId && $(focusId); if (f) setTimeout(() => f.focus(), 0);
+}
+function go(id, focusId) { if (screen !== id) history.pushState({ screen: id }, ''); show(id, focusId); }
+window.addEventListener('popstate', () => { const s = (history.state && history.state.screen) || 'main'; show(s, s === 'main' ? 'kOk' : null); });
+let toastT;
+function toast(msg, warn, ms = 3500) { const t = $('toast'); t.textContent = msg || ''; t.className = warn ? 'warn' : ''; clearTimeout(toastT); if (msg) toastT = setTimeout(() => t.textContent = '', ms); }
+function showStatus(s) {
+  if (!s) return;
+  if (s.tv === 'off') { $('stat').textContent = 'TV is off'; return; }
+  if (s.tv === 'standby') { $('stat').textContent = 'TV is in standby'; return; }
+  const bits = [];
+  if (s.app) bits.push(s.app);
+  if (s.volume !== undefined) bits.push(s.muted ? 'Muted' : 'Vol ' + s.volume);
+  if (bits.length) $('stat').textContent = bits.join(' · ');
+}
+async function refresh() {
+  try { const r = await tv('status'); showStatus(r); if (r.tv === 'off') $('stat').textContent = r.wakeable ? 'TV is off - ⏻ to turn on' : 'TV is off'; }
+  catch (e) { $('stat').textContent = e.message; }
+}
+// run a command from a button; quiet ones just flash the button
+async function act(a, params, btn) {
+  if (btn) btn.style.borderColor = 'var(--accent)';
+  try { const r = await tv(a, params); if (r.said) toast(r.said); return r; }
+  catch (e) { toast(e.message, true, 6000); throw e; }
+  finally { if (btn) setTimeout(() => btn.style.borderColor = '', 200); }
+}
+const press = (name, btn) => act('button', { name }, btn).catch(() => {});
+
+/* ---------- main remote ---------- */
+let tvOn = true;
+$('bPower').onclick = async () => {
+  let s = {}; try { s = await tv('status'); } catch (e) {}
+  if (s.tv === 'on') { if (confirmPower()) act('power_off').then(() => $('stat').textContent = 'TV is off').catch(() => {}); }
+  else { toast('Turning the TV on…'); act('power_on').then(() => setTimeout(refresh, 3000)).catch(() => {}); }
+};
+let powerArmed = 0;
+function confirmPower() {   // second tap within 4 s turns it off (no pop-up dialogs on the glasses)
+  if (Date.now() - powerArmed < 4000) { powerArmed = 0; return true; }
+  powerArmed = Date.now(); toast('Tap ⏻ again to turn the TV off', true, 4000); return false;
+}
+$('bMute').onclick = e => act('mute', {}, e.currentTarget).catch(() => {});
+$('bVolUp').onclick = e => act('vol_up', {}, e.currentTarget).catch(() => {});
+$('bVolDn').onclick = e => act('vol_down', {}, e.currentTarget).catch(() => {});
+for (const [id, name] of [['kUp', 'UP'], ['kDown', 'DOWN'], ['kLeft', 'LEFT'], ['kRight', 'RIGHT'], ['kOk', 'ENTER'], ['kBack', 'BACK'], ['kHome', 'HOME']])
+  $(id).onclick = e => press(name, e.currentTarget);
+let playing = true;
+$('kPlay').onclick = e => { press(playing ? 'PAUSE' : 'PLAY', e.currentTarget); playing = !playing; };
+$('bClose').onclick = () => {
+  try { window.close(); } catch (e) {}
+  setTimeout(() => { if (!document.hidden) toast('To close: swipe back, then swipe back once more.', true, 12000); }, 400);
+};
+
+/* ---------- swipe mode: glasses swipes become TV arrows ---------- */
+const ARROWS = { ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', Enter: 'ENTER', ' ': 'ENTER' };
+const SHOW = { UP: '▲', DOWN: '▼', LEFT: '◀', RIGHT: '▶', ENTER: 'OK' };
+$('bSwipe').onclick = () => go('swipe', 'swipeCatch');
+document.addEventListener('keydown', e => {
+  if (screen !== 'swipe') return;
+  const name = ARROWS[e.key]; if (!name) return;
+  e.preventDefault(); e.stopPropagation();
+  $('swipeLast').textContent = SHOW[name];
+  press(name);
+}, true);
+$('swipeCatch').onclick = () => { $('swipeLast').textContent = 'OK'; press('ENTER'); };   // a pinch arrives as a click (keyboard Enter is caught above)
+$('swipeCatch').addEventListener('blur', () => { if (screen === 'swipe') setTimeout(() => $('swipeCatch').focus(), 0); });
+
+/* ---------- apps ---------- */
+const FAVS = ['Netflix', 'YouTube', 'Prime Video', 'Disney+', 'Crave', 'Live TV'];
+function renderFavs() {
+  $('favs').innerHTML = FAVS.map((n, i) => `<button class="go" id="fav${i}" data-app="${n}">${n}</button>`).join('');
+  $('favs').querySelectorAll('button').forEach(b => b.onclick = () => openApp(b.dataset.app));
+}
+async function openApp(name) {
+  history.replaceState({ screen: 'main' }, ''); show('main', 'kOk');
+  toast('Opening ' + name + '…'); await act('launch', { app: name }).catch(() => {});
+  setTimeout(refresh, 2500);
+}
+$('bApps').onclick = async () => {
+  go('apps', 'fav0');
+  try {
+    const r = await tv('apps');
+    const list = (r.apps || []).filter(t => !FAVS.includes(t));
+    store.set('tv.apps', r.apps || []);
+    $('allApps').innerHTML = list.map((t, i) => `<button id="app${i}">${esc(t)}</button>`).join('') || '<div class="msg">No other apps.</div>';
+    $('allApps').querySelectorAll('button').forEach((b, i) => b.onclick = () => openApp(list[i]));
+  } catch (e) { $('allApps').innerHTML = `<div class="msg">${esc(e.message)}</div>`; }
+};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+/* ---------- YouTube on the TV ---------- */
+$('bYt').onclick = () => { go('yt', 'q'); };
+$('bYtBack').onclick = () => history.back();
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('bYtGo').click(); } });
+let ytResults = [];
+async function ytSearch(q) {
+  $('ytList').innerHTML = '<div class="msg"><div class="spin"></div>Searching…</div>';
+  const r = await fetch(`${TUBE}?q=${encodeURIComponent(q)}`, { cache: 'no-store' }).then(x => x.json());
+  if (!r.ok) throw new Error(r.error || 'Search failed.');
+  ytResults = (r.items || []).slice(0, 5);
+  $('ytList').innerHTML = ytResults.map((v, i) => `<button class="vid" id="yt${i}">${esc(v.title)}<small>${esc(v.channel || '')}${v.duration ? ' · ' + esc(v.duration) : ''}</small></button>`).join('') || '<div class="msg">No results.</div>';
+  $('ytList').querySelectorAll('button').forEach((b, i) => b.onclick = () => playYt(ytResults[i]));
+  if (ytResults.length) setTimeout(() => $('yt0').focus(), 0);
+  return ytResults;
+}
+async function playYt(v) {
+  history.replaceState({ screen: 'main' }, ''); show('main', 'kOk');
+  toast('Playing on the TV…'); await act('youtube', { id: v.id }).then(() => toast('▶ ' + v.title)).catch(() => {});
+  playing = true; setTimeout(refresh, 3000);
+}
+$('bYtGo').onclick = () => { const q = $('q').value.trim(); if (q) ytSearch(q).catch(e => $('ytList').innerHTML = `<div class="msg">${esc(e.message)}</div>`); };
+
+/* ---------- more ---------- */
+$('bMore').onclick = () => { $('inputList').innerHTML = ''; go('more', 'mPlay'); };
+$('bMoreBack').onclick = () => history.back();
+$('mPlay').onclick = e => { press('PLAY', e.currentTarget); playing = true; };
+$('mPause').onclick = e => { press('PAUSE', e.currentTarget); playing = false; };
+$('mRw').onclick = e => press('REWIND', e.currentTarget);
+$('mFf').onclick = e => press('FASTFORWARD', e.currentTarget);
+$('mScreenOff').onclick = e => act('screen_off', {}, e.currentTarget).catch(() => {});
+$('mScreenOn').onclick = e => act('screen_on', {}, e.currentTarget).catch(() => {});
+$('mType').onclick = () => { history.replaceState({ screen: 'type' }, ''); $('typeText').value = ''; show('type', 'typeText'); };
+$('mInputs').onclick = async () => {
+  $('inputList').innerHTML = '<div class="msg"><div class="spin"></div></div>';
+  try {
+    const r = await tv('inputs');
+    $('inputList').innerHTML = (r.inputs || []).map((d, i) => `<button id="in${i}">${esc(d.label)}</button>`).join('') || '<div class="msg">No inputs.</div>';
+    $('inputList').querySelectorAll('button').forEach((b, i) => b.onclick = () => act('input', { input: r.inputs[i].id }).catch(() => {}));
+    if (r.inputs && r.inputs.length) $('in0').focus();
+  } catch (e) { $('inputList').innerHTML = `<div class="msg">${esc(e.message)}</div>`; }
+};
+$('bTypeBack').onclick = () => history.back();
+$('typeText').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('bTypeGo').click(); } });
+$('bTypeGo').onclick = async () => {
+  const t = $('typeText').value.trim(); if (!t) return;
+  try { await tv('text', { text: t }); await tv('enter'); history.back(); setTimeout(() => toast('Sent: ' + t), 100); }
+  catch (e) { history.back(); setTimeout(() => toast(e.message, true, 6000), 100); }
+};
+
+/* ---------- voice tools for Meta AI (WebMCP) ---------- */
+const reply = text => ({ content: [{ type: 'text', text }] });
+const say = async (a, p, fallback) => { try { const r = await tv(a, p); setTimeout(refresh, 1500); return reply(r.said || fallback || 'Done.'); } catch (e) { return reply(e.message); } };
+const TOOLS = [
+  { name: 'tv_power', description: 'Turn Karen\'s LG TV on or off.',
+    inputSchema: { type: 'object', properties: { state: { type: 'string', enum: ['on', 'off'] } }, required: ['state'] },
+    execute: ({ state }) => say(state === 'off' ? 'power_off' : 'power_on') },
+  { name: 'tv_open_app', description: 'Open an app on the TV, like Netflix, YouTube, Prime Video, Disney+, Crave or Live TV. Netflix and most apps open to their home screen; to play a show there, open the app and then use tv_press to move around.',
+    inputSchema: { type: 'object', properties: { app: { type: 'string', description: 'App name, e.g. "Netflix"' } }, required: ['app'] },
+    execute: ({ app }) => say('launch', { app }) },
+  { name: 'tv_play_youtube', description: 'Search YouTube and play the top result on the TV right away. Use for "play ... on the TV" when YouTube makes sense (music, videos, how-tos).',
+    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'What to play, e.g. "relaxing jazz"' } }, required: ['query'] },
+    execute: async ({ query }) => { try { const items = await fetch(`${TUBE}?q=${encodeURIComponent(query)}`).then(x => x.json()); const v = items.items && items.items[0]; if (!v) return reply('No YouTube results for that.'); await tv('youtube', { id: v.id }); playing = true; setTimeout(refresh, 3000); return reply(`Playing "${v.title}" on the TV.`); } catch (e) { return reply(e.message); } } },
+  { name: 'tv_volume', description: 'Change the TV volume: up or down by some steps, or set an exact level 0-100.',
+    inputSchema: { type: 'object', properties: { direction: { type: 'string', enum: ['up', 'down', 'set'] }, amount: { type: 'number', description: 'Steps for up/down (default 2), or the level for set' } }, required: ['direction'] },
+    execute: ({ direction, amount }) => direction === 'set' ? say('vol_set', { level: amount }) : say(direction === 'down' ? 'vol_down' : 'vol_up', { n: amount || 2 }, `Volume ${direction}.`) },
+  { name: 'tv_mute', description: 'Mute or unmute the TV.', inputSchema: { type: 'object', properties: { mute: { type: 'boolean' } } },
+    execute: ({ mute }) => say('mute', mute === undefined ? {} : { on: mute ? '1' : '0' }) },
+  { name: 'tv_press', description: 'Press a remote button on the TV: UP, DOWN, LEFT, RIGHT, ENTER (OK), BACK, HOME, PLAY, PAUSE, REWIND, FASTFORWARD, CHANNELUP, CHANNELDOWN. Optional times to repeat.',
+    inputSchema: { type: 'object', properties: { button: { type: 'string' }, times: { type: 'number' } }, required: ['button'] },
+    execute: ({ button, times }) => { const b = String(button).toUpperCase().replace(/^OK$/, 'ENTER').replace(/^SELECT$/, 'ENTER'); if (b === 'PLAY') playing = true; if (b === 'PAUSE') playing = false; return say('button', { name: b, n: times || 1 }, 'Pressed ' + b.toLowerCase() + '.'); } },
+  { name: 'tv_type', description: 'Type text into a search box that is open on the TV, then press enter.',
+    inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+    execute: async ({ text }) => { try { await tv('text', { text }); await tv('enter'); return reply('Typed it on the TV.'); } catch (e) { return reply(e.message); } } },
+  { name: 'tv_input', description: 'Switch the TV to an input, like HDMI 1 or HDMI 2.',
+    inputSchema: { type: 'object', properties: { input: { type: 'string' } }, required: ['input'] },
+    execute: ({ input }) => say('input', { input }) },
+  { name: 'tv_status', description: 'Say whether the TV is on, which app is showing and the volume.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { try { const s = await tv('status'); showStatus(s); return reply(s.tv !== 'on' ? 'The TV is off.' : `The TV is on${s.app ? ', showing ' + s.app : ''}${s.volume !== undefined ? ', volume ' + s.volume + (s.muted ? ' (muted)' : '') : ''}.`); } catch (e) { return reply(e.message); } } },
+];
+(function registerVoiceTools() {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || typeof mc.registerTool !== 'function') return;
+  for (const t of TOOLS) { try { const p = mc.registerTool(t); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+})();
+
+renderFavs();
+history.replaceState({ screen: 'main' }, '');
+show('main', 'kOk');
+refresh();
+setInterval(() => { if (!document.hidden && screen === 'main') refresh(); }, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+</script>
+</body>
+</html>
