@@ -63,12 +63,15 @@
   .big { font-size: calc(var(--u) * 6.4); font-weight: 800; line-height: 1.2; margin-top: auto; }
   .when { color: var(--warn); font-size: calc(var(--u) * 4.2); font-weight: 600; margin-bottom: auto; }
   .row3 { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: calc(var(--u) * 1.6); }
+  .ok { color: var(--accent); font-size: calc(var(--u) * 4.6); font-weight: 800; margin-top: auto; }
+  .hint { color: var(--warn); font-size: calc(var(--u) * 3.8); text-align: center; min-height: 1.3em; }
+  .xbtn { padding: calc(var(--u) * 1.4) calc(var(--u) * 2.6); font-size: calc(var(--u) * 3.8); }
 </style>
 </head>
 <body>
 
 <section class="screen active" id="list">
-  <div class="top"><h1>To-Do</h1><div class="count" id="count"></div></div>
+  <div class="top"><h1>To-Do</h1><div class="count" id="count"></div><button class="xbtn" id="bCloseList">✕ Close</button></div>
   <button class="go" id="bAdd">＋ Add a to-do</button>
   <div id="toast"></div>
   <div id="items"><div class="msg"><div class="spin"></div>Loading…</div></div>
@@ -92,6 +95,17 @@
     <button class="go" id="bDone">✓ Done</button>
     <button id="bRemove">✕ Remove</button>
     <button id="bOneBack">Back</button>
+  </div>
+</section>
+
+<section class="screen" id="saved">
+  <div class="ok">✓ Added</div>
+  <div class="big" id="savedText" style="margin-top:0"></div>
+  <div class="when" id="savedWhen"></div>
+  <div class="row3">
+    <button class="go" id="bClose">✕ Close</button>
+    <button id="bAnother">＋ Another</button>
+    <button id="bSavedList">List</button>
   </div>
 </section>
 
@@ -171,7 +185,7 @@ function go(id, focusId) { if (screen !== id) history.pushState({ screen: id }, 
 window.addEventListener('popstate', () => { renderList(); show('list', 'bAdd'); });
 function toList(msg, warn) { if (history.state && history.state.screen !== 'list') history.back(); else { renderList(); show('list', 'bAdd'); } toast(msg, warn); }
 let toastT = 0;
-function toast(msg, warn) { $('toast').textContent = msg || ''; $('toast').className = warn ? 'warn' : ''; clearTimeout(toastT); if (msg) toastT = setTimeout(() => { $('toast').textContent = ''; }, 6000); }
+function toast(msg, warn, ms) { $('toast').textContent = msg || ''; $('toast').className = warn ? 'warn' : ''; clearTimeout(toastT); if (msg) toastT = setTimeout(() => { $('toast').textContent = ''; }, ms || 6000); }
 
 /* ---------- list ---------- */
 let data = store.get('todo.cache', { open: [], done: [] });
@@ -226,11 +240,37 @@ async function addTodo(text, when) {
   try {
     const d = await api('todo-add', { text, remind_at: when });
     data.open = [d.item, ...(data.open || [])]; store.set('todo.cache', data);
-    toList(d.note ? d.note : `Added${d.item.remind_at ? ' · reminder ' + whenLabel(d.item.remind_at) : ''}`, !!d.note);
+    showSaved(d);
     load();
     return d;
   } catch (e) { toList(e.message, true); throw e; }
 }
+
+/* ---------- after adding: Close, add another, or see the list ---------- */
+function showSaved(d) {
+  $('savedText').textContent = d.item.text;
+  $('savedWhen').textContent = d.note ? d.note : d.item.remind_at ? '⏰ Reminder ' + whenLabel(d.item.remind_at) : 'No reminder';
+  $('savedWhen').style.color = d.note ? 'var(--warn)' : '';
+  // The add screen becomes the confirmation, so Back still leads straight to the list.
+  if (history.state && history.state.screen === 'add') history.replaceState({ screen: 'saved' }, '');
+  else if (!history.state || history.state.screen === 'list') history.pushState({ screen: 'saved' }, '');
+  show('saved', 'bClose');
+}
+$('bAnother').onclick = () => { history.replaceState({ screen: 'add' }, ''); $('words').value = ''; autoWhen = null; remind = 'none'; renderChips(); show('add', 'words'); };
+$('bSavedList').onclick = () => history.back();
+// Web apps can't close themselves on the glasses unless the glasses allow it, so try,
+// and if the app is still open, go back to the main list and say how to close it.
+function closeApp() {
+  try { window.close(); } catch (e) {}
+  setTimeout(() => {
+    if (document.hidden) return;
+    const hint = 'To close: swipe back, then swipe back once more.';
+    if (history.state && history.state.screen !== 'list') { history.back(); setTimeout(() => toast(hint, true, 12000), 150); }
+    else toast(hint, true, 12000);
+  }, 400);
+}
+$('bClose').onclick = closeApp;
+$('bCloseList').onclick = closeApp;
 
 /* ---------- one item ---------- */
 let cur = null;
