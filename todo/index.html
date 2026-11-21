@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="To-Do on Meta Ray-Ban Display: say a to-do, check it off, and get a reminder that pops up on your glasses through Google Calendar.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>To-Do</title>
+<style>
+  /* To-Do for the glasses (also works on a phone).
+     The list lives in Google Sheets (Drive > Glasses To-Do) via Karen's n8n.
+     A reminder time becomes a Google Calendar event with a pop-up, which the glasses show. */
+  :root {
+    --accent: #8fe388;
+    --text: #ffffff;
+    --dim: #a9b7be;
+    --warn: #ffc44d;
+    --focus: #ffd84a;
+    --u: min(1vw, 1vh, 6px);   /* 600x600 => 6px; capped so a phone looks the same */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; margin: 0 auto; max-width: 600px; display: none; flex-direction: column; padding: calc(var(--u) * 3.5); gap: calc(var(--u) * 2); }
+  .screen.active { display: flex; }
+  button, input { font: inherit; color: inherit; }
+  button { background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.5); cursor: pointer;
+    padding: calc(var(--u) * 2.2) calc(var(--u) * 2); font-size: calc(var(--u) * 4.4); font-weight: 700; }
+  button.go { background: #10260f; border-color: var(--accent); }
+  button:focus, input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u) * .6) var(--focus); }
+  .top { display: flex; justify-content: space-between; align-items: baseline; }
+  h1 { margin: 0; font-size: calc(var(--u) * 6.4); color: var(--accent); }
+  .count { color: var(--dim); font-size: calc(var(--u) * 3.8); }
+  .msg { color: var(--dim); font-size: calc(var(--u) * 4.4); line-height: 1.4; text-align: center; margin: auto 0; }
+  .err { color: #ff9a8a; }
+  .spin { width: calc(var(--u) * 8); height: calc(var(--u) * 8); margin: 0 auto calc(var(--u) * 3); border-radius: 50%;
+    border: calc(var(--u) * 1) solid #222; border-top-color: var(--accent); animation: s .8s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+
+  /* list */
+  #items { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: calc(var(--u) * 1.4); padding: calc(var(--u) * .8); scrollbar-width: none; }
+  #items::-webkit-scrollbar { display: none; }
+  .item { text-align: left; flex: 0 0 auto; font-size: calc(var(--u) * 4.6); font-weight: 600; line-height: 1.25; }
+  .item small { display: block; color: var(--warn); font-size: calc(var(--u) * 3.4); font-weight: 600; margin-top: calc(var(--u) * .7); }
+  .donehead { color: var(--dim); font-size: calc(var(--u) * 3.4); margin-top: calc(var(--u) * 1.5); }
+  .doneitem { color: #6f7b80; font-size: calc(var(--u) * 3.8); text-decoration: line-through; padding: 0 calc(var(--u) * 1); }
+  #toast { min-height: 1.3em; color: var(--accent); font-size: calc(var(--u) * 3.8); text-align: center; }
+  #toast.warn { color: var(--warn); }
+
+  /* add */
+  .label { color: var(--dim); font-size: calc(var(--u) * 3.8); }
+  #words { width: 100%; background: #0d0d0d; border: calc(var(--u) * .5) solid #444; border-radius: calc(var(--u) * 2.5);
+    padding: calc(var(--u) * 2.8) calc(var(--u) * 3); font-size: calc(var(--u) * 4.8); }
+  #words::placeholder { color: #7d8a90; }
+  #chips { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 1.4); }
+  #chips button { font-size: calc(var(--u) * 3.8); padding: calc(var(--u) * 1.8) calc(var(--u) * 1); font-weight: 600; }
+  #chips button.on { background: var(--warn); color: #2a1d00; border-color: var(--warn); font-weight: 800; }
+  .row2 { display: grid; grid-template-columns: 1fr 1.4fr; gap: calc(var(--u) * 1.8); margin-top: auto; }
+
+  /* one item */
+  .big { font-size: calc(var(--u) * 6.4); font-weight: 800; line-height: 1.2; margin-top: auto; }
+  .when { color: var(--warn); font-size: calc(var(--u) * 4.2); font-weight: 600; margin-bottom: auto; }
+  .row3 { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: calc(var(--u) * 1.6); }
+</style>
+</head>
+<body>
+
+<section class="screen active" id="list">
+  <div class="top"><h1>To-Do</h1><div class="count" id="count"></div></div>
+  <button class="go" id="bAdd">＋ Add a to-do</button>
+  <div id="toast"></div>
+  <div id="items"><div class="msg"><div class="spin"></div>Loading…</div></div>
+</section>
+
+<section class="screen" id="add">
+  <div class="label">What do you need to do?</div>
+  <input id="words" type="text" maxlength="200" placeholder="Pinch, then say it" autocomplete="off">
+  <div class="label">Remind me</div>
+  <div id="chips"></div>
+  <div class="row2">
+    <button id="bAddBack">Back</button>
+    <button class="go" id="bSave">Add</button>
+  </div>
+</section>
+
+<section class="screen" id="one">
+  <div class="big" id="oneText"></div>
+  <div class="when" id="oneWhen"></div>
+  <div class="row3">
+    <button class="go" id="bDone">✓ Done</button>
+    <button id="bRemove">✕ Remove</button>
+    <button id="bOneBack">Back</button>
+  </div>
+</section>
+
+<section class="screen" id="work"><div class="msg"><div class="spin"></div><span id="workMsg">Saving…</span></div></section>
+
+<script>
+const API = 'https://n8n.rainandwind.ca/webhook/';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+(() => { const k = new URLSearchParams(location.search).get('k'); if (k) store.set('todo.key', k); })();
+const KEY = () => store.get('todo.key', '');
+
+async function api(path, data) {
+  if (!KEY()) throw new Error('Open the app once from your private address (the one ending in ?k=…).');
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const r = data ? await fetch(API + path, { method: 'POST', body: new URLSearchParams(Object.assign({ k: KEY() }, data)), signal: ctrl.signal })
+                   : await fetch(`${API}${path}?k=${encodeURIComponent(KEY())}`, { cache: 'no-store', signal: ctrl.signal });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'Something went wrong. Try again.');
+    return d;
+  } catch (e) { throw new Error(e.name === 'AbortError' ? 'n8n took too long. Try again.' : e.message); }
+  finally { clearTimeout(t); }
+}
+
+/* ---------- times ---------- */
+const pad = n => String(n).padStart(2, '0');
+function isoLocal(d) {   // 2026-11-21T19:00:00-05:00
+  const off = -d.getTimezoneOffset(), s = off >= 0 ? '+' : '-', a = Math.abs(off);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${s}${pad(Math.floor(a / 60))}:${pad(a % 60)}`;
+}
+function whenLabel(iso) {
+  if (!iso) return '';
+  const d = new Date(iso); if (isNaN(d)) return '';
+  const now = new Date(), tom = new Date(now); tom.setDate(now.getDate() + 1);
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return `Today ${time}`;
+  if (d.toDateString() === tom.toDateString()) return `Tomorrow ${time}`;
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' ' + time;
+}
+const at = (dayOffset, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + dayOffset); d.setHours(h, m, 0, 0); return d; };
+// "call dad at 3 pm", "remind me to pay the bill tomorrow at 9", "vet tomorrow" -> { text, when }
+function parseSpoken(raw) {
+  let text = String(raw || '').trim().replace(/^(please\s+)?remind me (to\s+)?/i, '').replace(/^(add|new)\s+(a\s+)?(to-?do|task)\s*(to\s+)?/i, '');
+  let when = null;
+  const re = /\s*\b(?:(tomorrow|today|tonight|this evening)\s+)?at\s+(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)?(?:\s+(tomorrow|today|tonight))?\b/i;
+  const m = text.match(re);
+  if (m) {
+    const day = (m[1] || m[5] || '').toLowerCase();
+    let h = +m[2]; const min = +(m[3] || 0); const ap = (m[4] || '').toLowerCase().replace(/[.\s]/g, '');
+    if (h <= 12 && min < 60) {
+      if (ap === 'pm' && h < 12) h += 12;
+      else if (ap === 'am' && h === 12) h = 0;
+      else if (!ap && (day === 'tonight' || day === 'this evening' || h <= 7)) h = h < 12 ? h + 12 : h;   // "at 3" means 3 PM
+      let d = at(day === 'tomorrow' ? 1 : 0, h, min);
+      if (!day && d < new Date()) d = at(1, h, min);
+      when = d; text = text.replace(re, ' ').replace(/\s+/g, ' ').trim();
+    }
+  } else if (/\btomorrow\b/i.test(text)) {
+    when = at(1, 9); text = text.replace(/\s*\btomorrow\b/i, '').trim();
+  }
+  text = text.replace(/[.,;:\s]+$/, '');
+  if (text) text = text[0].toUpperCase() + text.slice(1);
+  return { text, when };
+}
+
+/* ---------- screens + Back ---------- */
+let screen = 'list';
+function show(id, focusId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  screen = id;
+  if (focusId) setTimeout(() => { const el = $(focusId); el && el.focus(); }, 0);
+}
+function go(id, focusId) { if (screen !== id) history.pushState({ screen: id }, ''); show(id, focusId); }
+window.addEventListener('popstate', () => { renderList(); show('list', 'bAdd'); });
+function toList(msg, warn) { if (history.state && history.state.screen !== 'list') history.back(); else { renderList(); show('list', 'bAdd'); } toast(msg, warn); }
+let toastT = 0;
+function toast(msg, warn) { $('toast').textContent = msg || ''; $('toast').className = warn ? 'warn' : ''; clearTimeout(toastT); if (msg) toastT = setTimeout(() => { $('toast').textContent = ''; }, 6000); }
+
+/* ---------- list ---------- */
+let data = store.get('todo.cache', { open: [], done: [] });
+function renderList() {
+  const open = data.open || [], done = (data.done || []).filter(x => x.done_at && new Date(x.done_at).toDateString() === new Date().toDateString());
+  $('count').textContent = open.length ? `${open.length} to do` : '';
+  $('items').innerHTML = (open.length ? open.map((t, i) => `<button class="item" data-i="${i}">${esc(t.text)}${t.remind_at ? `<small>⏰ ${esc(whenLabel(t.remind_at))}</small>` : ''}</button>`).join('')
+      : '<div class="msg">Nothing to do. Nice.</div>') +
+    (done.length ? `<div class="donehead">Done today</div>` + done.map(d => `<div class="doneitem">${esc(d.text)}</div>`).join('') : '');
+  $('items').querySelectorAll('.item').forEach(b => b.onclick = () => openItem(open[+b.dataset.i]));
+}
+async function load() {
+  try { data = await api('todo-list'); store.set('todo.cache', data); renderList(); }
+  catch (e) { renderList(); toast(e.message, true); }
+}
+
+/* ---------- add ---------- */
+let remind = null, autoWhen = null;
+function chipList() {
+  const now = new Date(), list = [{ k: 'none', t: 'No reminder', d: null }, { k: 'hour', t: 'In 1 hour', d: new Date(now.getTime() + 3600000) }];
+  if (now.getHours() < 17) list.push({ k: 'eve', t: 'Today 6 PM', d: at(0, 18) });
+  else if (now.getHours() < 19) list.push({ k: 'eve', t: 'Today 8 PM', d: at(0, 20) });
+  list.push({ k: 'tom', t: 'Tomorrow 9 AM', d: at(1, 9) });
+  if (autoWhen) list.unshift({ k: 'auto', t: '⏰ ' + whenLabel(isoLocal(autoWhen)), d: autoWhen });
+  return list;
+}
+function renderChips() {
+  const list = chipList();
+  if (!list.some(c => c.k === remind)) remind = autoWhen ? 'auto' : 'none';
+  $('chips').innerHTML = list.slice(0, 4).map(c => `<button class="${c.k === remind ? 'on' : ''}" data-k="${c.k}">${esc(c.t)}</button>`).join('');
+  $('chips').querySelectorAll('button').forEach(b => b.onclick = () => { remind = b.dataset.k; renderChips(); $('bSave').focus(); });
+}
+$('bAdd').onclick = () => { $('words').value = ''; autoWhen = null; remind = 'none'; renderChips(); go('add', 'words'); };
+$('bAddBack').onclick = () => history.back();
+$('words').addEventListener('change', () => {
+  const p = parseSpoken($('words').value);
+  if (p.when) { autoWhen = p.when; remind = 'auto'; $('words').value = p.text; }
+  renderChips();
+  if ($('words').value.trim()) $('bSave').focus();
+});
+$('words').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('words').dispatchEvent(new Event('change')); $('bSave').click(); } });
+$('bSave').onclick = async () => {
+  const p = parseSpoken($('words').value);
+  if (!p.text) { $('words').focus(); return; }
+  if (p.when && remind !== 'auto' && remind === 'none') { autoWhen = p.when; remind = 'auto'; }
+  const chip = chipList().find(c => c.k === remind);
+  const when = chip && chip.d ? isoLocal(chip.d) : '';
+  await addTodo(p.text, when);
+};
+async function addTodo(text, when) {
+  show('work'); $('workMsg').textContent = when ? 'Adding it and setting the reminder…' : 'Adding…';
+  try {
+    const d = await api('todo-add', { text, remind_at: when });
+    data.open = [d.item, ...(data.open || [])]; store.set('todo.cache', data);
+    toList(d.note ? d.note : `Added${d.item.remind_at ? ' · reminder ' + whenLabel(d.item.remind_at) : ''}`, !!d.note);
+    load();
+    return d;
+  } catch (e) { toList(e.message, true); throw e; }
+}
+
+/* ---------- one item ---------- */
+let cur = null;
+function openItem(t) {
+  cur = t;
+  $('oneText').textContent = t.text;
+  $('oneWhen').textContent = t.remind_at ? '⏰ ' + whenLabel(t.remind_at) : '';
+  go('one', 'bDone');
+}
+$('bOneBack').onclick = () => history.back();
+$('bDone').onclick = () => finish(cur, 'done');
+$('bRemove').onclick = () => finish(cur, 'remove');
+async function finish(t, action) {
+  if (!t) return;
+  show('work'); $('workMsg').textContent = action === 'done' ? 'Checking it off…' : 'Removing…';
+  try {
+    await api('todo-done', { id: t.id, action });
+    data.open = (data.open || []).filter(x => x.id !== t.id);
+    if (action === 'done') data.done = [{ id: t.id, text: t.text, done_at: new Date().toISOString() }, ...(data.done || [])];
+    store.set('todo.cache', data);
+    toList(action === 'done' ? `✓ ${t.text}` : 'Removed');
+    load();
+  } catch (e) { toList(e.message, true); throw e; }
+}
+
+/* ---------- voice tools for Meta AI (WebMCP) ---------- */
+const reply = text => ({ content: [{ type: 'text', text }] });
+const findTodo = words => { const w = String(words || '').toLowerCase(); return (data.open || []).find(t => t.text.toLowerCase().includes(w)) || null; };
+const TOOLS = [
+  { name: 'add_todo', description: 'Add a to-do to the To-Do list on the glasses. Optional "when", like "at 3 pm", "tomorrow at 9" or "in an hour", sets a reminder that pops up through Google Calendar.',
+    inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'The to-do, e.g. "call the vet"' }, when: { type: 'string', description: 'Optional reminder time in words' } }, required: ['text'] },
+    execute: async ({ text, when }) => {
+      let iso = '';
+      if (when) { if (/hour/i.test(when)) iso = isoLocal(new Date(Date.now() + 3600000)); else { const p = parseSpoken(`x ${/at|tomorrow/i.test(when) ? '' : 'at '}${when}`); if (p.when) iso = isoLocal(p.when); } }
+      else { const p = parseSpoken(text); if (p.when) { iso = isoLocal(p.when); text = p.text; } }
+      try { const d = await addTodo(parseSpoken(text).text || text, iso); return reply(d.note || `Added "${d.item.text}"${d.item.remind_at ? ', with a reminder ' + whenLabel(d.item.remind_at) : ''}.`); }
+      catch (e) { return reply('Not added: ' + e.message); } } },
+  { name: 'list_todos', description: 'Read out the open to-dos on the To-Do list.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { await load(); const o = data.open || []; return reply(o.length ? `${o.length} to do: ` + o.map(t => t.text + (t.remind_at ? ` (${whenLabel(t.remind_at)})` : '')).join('; ') + '.' : 'Nothing on the list.'); } },
+  { name: 'complete_todo', description: 'Check off a to-do as done, found by words from it.', inputSchema: { type: 'object', properties: { todo: { type: 'string' } }, required: ['todo'] },
+    execute: async ({ todo }) => { const t = findTodo(todo); if (!t) return reply('I could not find that on the list.'); try { await finish(t, 'done'); return reply(`Checked off: ${t.text}.`); } catch (e) { return reply(e.message); } } },
+  { name: 'remove_todo', description: 'Remove a to-do from the list without checking it off, found by words from it.', inputSchema: { type: 'object', properties: { todo: { type: 'string' } }, required: ['todo'] },
+    execute: async ({ todo }) => { const t = findTodo(todo); if (!t) return reply('I could not find that on the list.'); try { await finish(t, 'remove'); return reply(`Removed: ${t.text}.`); } catch (e) { return reply(e.message); } } }
+];
+(function registerVoiceTools() {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || typeof mc.registerTool !== 'function') return;
+  for (const t of TOOLS) { try { const p = mc.registerTool(t); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+})();
+
+history.replaceState({ screen: 'list' }, '');
+renderList(); show('list', 'bAdd');
+load();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+</script>
+</body>
+</html>
