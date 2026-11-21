@@ -149,7 +149,8 @@ async function save(copy) {
     const raw = await r.text();
     let d = {}; try { d = JSON.parse(raw); } catch (e) {}
     if (r.ok && d.ok) {
-      say(`Saved "${d.title || title}". Pinch Refresh in Songbook on the glasses.`, 'ok');
+      $('status').className = 'ok';
+      $('status').innerHTML = `Saved "${(d.title || title).replace(/[<>&]/g, '')}". Pinch Refresh in Songbook on the glasses. <a style="color:#3df5c8" href="edit.html?id=${encodeURIComponent(d.id || '')}">Edit it</a>`;
       $('copy').classList.add('hidden'); $('close').classList.remove('hidden'); $('close').focus();
       return;
     }

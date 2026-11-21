@@ -69,6 +69,11 @@
   .controls { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: calc(var(--u)*1.5);
     padding: calc(var(--u)*1.6) calc(var(--u)*3.5) calc(var(--u)*2.6); }
   .controls button { padding: calc(var(--u)*2.2) 0; font-size: calc(var(--u)*4); font-weight: 700; }
+  .controls.withsave { grid-template-columns: 1.2fr 1fr 1fr 1fr 1.2fr; }
+  .controls.withsave button { font-size: calc(var(--u)*3.6); }
+  #bSaveBpm { border-color: var(--mint); color: var(--mint); }
+  #bSaveBpm[hidden] { display: none; }
+  .tiltlive { font-size: calc(var(--u)*5); color: var(--mint); min-height: 1.3em; }
 
   /* ---------- Tilt setup ---------- */
   .big { font-size: calc(var(--u)*14); font-weight: 800; }
@@ -92,6 +97,7 @@
     <button id="bSlower">Slower</button>
     <button id="bFaster">Faster</button>
     <button id="bRestart">Restart</button>
+    <button id="bSaveBpm" hidden>Save</button>
   </div>
 </section>
 
@@ -101,6 +107,7 @@
     <div class="msg" id="tMsg">Set up head tilt: tilt right = next line, tilt left = back a line.</div>
     <div class="big" id="tBig"></div>
     <button id="bTiltGo">Begin</button>
+    <div class="tiltlive" id="tLive"></div>
     <div class="dim" id="tNote"></div>
   </div>
 </section>
@@ -294,10 +301,11 @@ async function openSong(s) {
   let text = null, note = '';
   try { text = (await api({ id: s.id })).text; store.set(LS.song(s.id), text); }
   catch (e) { text = store.get(LS.song(s.id), null); note = text ? ' (offline copy)' : ''; if (!text) { $('lines').innerHTML = `<div class="end" style="padding-top:15vh">Could not load this song.<br>${esc(e.message)}</div>`; return; } }
+  P.raw = text;
   const parsed = parseSong(text);
   P.meta = parsed.meta; P.units = parsed.units; P.idx = 0; P.state = 'ready';
   P.speed = store.get(LS.speed(s.id), 1);
-  renderUnits(); updateInfo(note); place(); setGo('Start');
+  renderUnits(); updateInfo(note); updateSaveBtn(); place(); setGo('Start');
   $('fill').style.width = '0';
   setTimeout(() => $('bGo').focus(), 0);
 }
@@ -401,8 +409,50 @@ function changeSpeed(f) {
   store.set(LS.speed(P.song.id), P.speed);
   // keep the same fraction of the current line done
   if (P.state === 'playing') { const frac = (performance.now() - P.unitStart) / before; P.unitStart = performance.now() - frac * unitMs(P.units[P.idx]); }
-  updateInfo();
+  updateInfo(); updateSaveBtn();
 }
+
+/* ---------- Save the new tempo into the song's Google Doc ---------- */
+const SAVE_URL = 'https://n8n.rainandwind.ca/webhook/glasses-songbook-save';
+function updateSaveBtn() {
+  const changed = !!P.song && Math.abs(P.speed - 1) > 0.001;
+  $('bSaveBpm').hidden = !changed;
+  $('bSaveBpm').textContent = changed ? `Save ${bpm()}` : 'Save';
+  document.querySelector('#play .controls').classList.toggle('withsave', changed);
+}
+// Put the new BPM in the song's top line: change the number if there is one, otherwise add "BPM n" at the top.
+function withBpm(text, n) {
+  const lines = text.replace(/\r/g, '').split('\n');
+  const RE = /(\d{2,3})(\s*bpm)|(bpm\s*[:=]?\s*)(\d{2,3})|(tempo\s*[:=]?\s*)(\d{2,3})/i;
+  for (let i = 0; i < Math.min(12, lines.length); i++) {
+    if (RE.test(lines[i]) && lines[i].trim().length < 70 && !isChordLine(lines[i])) {
+      lines[i] = lines[i].replace(RE, (m, a, b, c, d, e, f) => a ? n + b : c ? c + n : e + n);
+      return lines.join('\n');
+    }
+  }
+  return `BPM ${n}\n` + lines.join('\n');
+}
+async function saveBpm() {
+  if (!P.song || !P.raw) return 'Open a song first.';
+  const n = bpm();
+  // Google Docs adds blank lines on every round trip: keep at most one blank line between sections.
+  const text = withBpm(P.raw, n).replace(/\n{3,}/g, '\n\n').replace(/\n*$/, '\n');
+  const b = $('bSaveBpm'); b.disabled = true; b.textContent = 'Saving…';
+  try {
+    const r = await fetch(SAVE_URL, { method: 'POST', body: new URLSearchParams({ k: KEY(), id: P.song.id, text }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'Could not save.');
+    P.raw = text; store.set(LS.song(P.song.id), text);
+    P.meta.bpm = n; P.speed = 1; store.set(LS.speed(P.song.id), 1);
+    updateInfo(' · saved'); updateSaveBtn();
+    setTimeout(() => $('bGo').focus(), 0);
+    return `Saved. This song is now ${n} bpm.`;
+  } catch (e) {
+    b.textContent = 'Retry save'; updateInfo(' · not saved');
+    return 'Not saved: ' + e.message;
+  } finally { b.disabled = false; }
+}
+$('bSaveBpm').addEventListener('click', saveBpm);
 function stopSong() { cancelAnimationFrame(P.raf); if (P.state !== 'idle') P.state = 'idle'; $('count').classList.remove('show'); releaseAwake(); }
 
 $('bGo').addEventListener('click', () => (P.state === 'playing' || P.state === 'count') ? pause() : play());
@@ -418,8 +468,10 @@ function releaseAwake() { try { P.wake && P.wake.release(); } catch (e) {} P.wak
    HEAD TILT (same method as the Tilt Test that worked on the glasses)
    ===================================================================== */
 let lastOri = null, tiltCal = store.get(LS.tilt, null), tiltBase = tiltCal ? tiltCal.base : null;
-let tiltArmed = true, overSince = 0;
-const TILT = { thresh: 0.6, holdMs: 400 };
+if (tiltCal && !tiltCal.spanR) { tiltCal.spanR = tiltCal.spanL = tiltCal.span; }   // older setup: same size both ways
+let tiltArmed = true, overSince = 0, lastOriT = 0, tiltTest = false;
+// Trigger at half of the tilt measured in setup, held 0.3 s. Re-arms once the head comes back near level.
+const TILT = { thresh: 0.5, rearm: 0.22, holdMs: 300, driftMs: 4000 };
 const diff = (a, b) => ((a - b + 540) % 360) - 180;
 function circMean(arr) {
   const o = {};
@@ -429,52 +481,81 @@ function circMean(arr) {
   }
   return o;
 }
+// How far the head is tilted: +1 = as far right as in setup, -1 = as far left as in setup.
+function tiltAmount() {
+  const d = diff(lastOri[tiltCal.axis], tiltBase[tiltCal.axis]) * tiltCal.sign;
+  return d >= 0 ? d / tiltCal.spanR : d / tiltCal.spanL;
+}
 window.addEventListener('deviceorientation', e => {
   if (e.beta == null && e.gamma == null) return;
   lastOri = { alpha: e.alpha ?? 0, beta: e.beta ?? 0, gamma: e.gamma ?? 0 };
-  if (!tiltCal || !tiltBase || !$('play').classList.contains('active')) return;
-  if (!['playing', 'paused', 'ready'].includes(P.state)) return;
-  const rel = diff(lastOri[tiltCal.axis], tiltBase[tiltCal.axis]) * tiltCal.sign / tiltCal.span;
-  const now = performance.now();
-  if (Math.abs(rel) < TILT.thresh * 0.4) { tiltArmed = true; overSince = 0; return; }
+  const now = performance.now(), dt = lastOriT ? Math.min(200, now - lastOriT) : 0; lastOriT = now;
+  if (!tiltCal || !tiltBase) return;
+  const inSongNow = $('play').classList.contains('active') && ['playing', 'paused', 'ready'].includes(P.state);
+  if (!inSongNow && !tiltTest) return;
+  const rel = tiltAmount();
+  if (Math.abs(rel) < TILT.rearm) {
+    tiltArmed = true; overSince = 0;
+    // Near level: slowly follow how you are holding your head (e.g. looking down at the fretboard).
+    const ax = tiltCal.axis;
+    tiltBase = { ...tiltBase, [ax]: tiltBase[ax] + diff(lastOri[ax], tiltBase[ax]) * (dt / TILT.driftMs) };
+    if (tiltTest) $('tLive').textContent = '· level ·';
+    return;
+  }
   if (!tiltArmed || Math.abs(rel) < TILT.thresh) { overSince = 0; return; }
   if (!overSince) overSince = now;
-  if (now - overSince >= TILT.holdMs) { tiltArmed = false; overSince = 0; nudge(rel > 0 ? 1 : -1); }
+  if (now - overSince >= TILT.holdMs) {
+    tiltArmed = false; overSince = 0;
+    if (inSongNow) nudge(rel > 0 ? 1 : -1);
+    else $('tLive').textContent = rel > 0 ? 'RIGHT ✓ next line' : 'LEFT ✓ back a line';
+  }
 });
 function nudge(step) {
   go(step);
   const n = $('nudge'); n.textContent = step > 0 ? '▼' : '▲'; n.classList.add('on'); setTimeout(() => n.classList.remove('on'), 300);
 }
 
-// Calibration screen
+// Setup screen: level, then right, then left (each side gets its own size).
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function sample(ms) { const s = []; const end = performance.now() + ms; while (performance.now() < end) { if (lastOri) s.push({ ...lastOri }); await sleep(40); } return s; }
 async function countdown(msg, n) { $('tMsg').textContent = msg; for (let i = n; i > 0; i--) { $('tBig').textContent = i; await sleep(1000); } $('tBig').textContent = '…'; }
+function tiltFail(msg) { $('tMsg').textContent = msg; $('tBig').textContent = ''; $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Try again'; $('bTiltGo').focus(); }
 async function calibrate() {
+  tiltTest = false; $('tLive').textContent = '';
   $('bTiltGo').hidden = true; $('tNote').textContent = '';
   await sleep(600);
-  if (!lastOri) { $('tMsg').textContent = 'No motion readings from the glasses.'; $('tBig').textContent = ''; $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Try again'; $('bTiltGo').focus(); return; }
-  await countdown('Hold your head level…', 3);
+  if (!lastOri) return tiltFail('No motion readings from the glasses.');
+  await countdown('Hold your head the way you play…', 3);
   const base = circMean(await sample(1200));
   await countdown('Tilt your head RIGHT and hold', 3);
-  const tilt = circMean(await sample(1200));
+  const right = circMean(await sample(1200));
   let best = 0, axis = 'gamma';
-  for (const k of ['beta', 'gamma', 'alpha']) { const d = diff(tilt[k], base[k]); if (Math.abs(d) > Math.abs(best)) { best = d; axis = k; } }
-  if (Math.abs(best) < 6) { $('tMsg').textContent = 'Barely moved. Try a bigger tilt.'; $('tBig').textContent = ''; $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Try again'; $('bTiltGo').focus(); return; }
-  tiltCal = { axis, sign: Math.sign(best), span: Math.abs(best), base }; tiltBase = base; store.set(LS.tilt, tiltCal);
-  $('tMsg').textContent = 'Done! Tilt right = next line, left = back a line.'; $('tBig').textContent = '✓';
+  for (const k of ['beta', 'gamma', 'alpha']) { const d = diff(right[k], base[k]); if (Math.abs(d) > Math.abs(best)) { best = d; axis = k; } }
+  if (Math.abs(best) < 6) return tiltFail('Barely moved to the right. Try a bigger tilt.');
+  await countdown('Back to level…', 2);
+  await countdown('Now tilt your head LEFT and hold', 3);
+  const left = circMean(await sample(1200));
+  const sign = Math.sign(best), spanR = Math.abs(best);
+  const spanL = -diff(left[axis], base[axis]) * sign;     // positive when the left tilt went the other way
+  if (spanL < 6) return tiltFail('The left tilt did not register. Try again, tilting a little more to the left.');
+  tiltCal = { axis, sign, spanR, spanL, base }; tiltBase = base; store.set(LS.tilt, tiltCal);
+  $('tMsg').textContent = 'Done! Try it now: tilt right, then left.'; $('tBig').textContent = '✓';
+  $('tNote').textContent = `Right ${Math.round(spanR)}°, left ${Math.round(spanL)}°`;
+  tiltTest = true; tiltArmed = true; $('tLive').textContent = '· level ·';
   $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Back to songs'; $('bTiltGo').dataset.done = '1'; $('bTiltGo').focus();
 }
 $('bTilt').addEventListener('click', () => {
   history.pushState({ screen: 'tilt' }, '');
-  $('tMsg').textContent = tiltCal ? 'Head tilt is set up. Redo it?' : 'Set up head tilt: tilt right = next line, tilt left = back a line.';
-  $('tBig').textContent = ''; $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Begin'; delete $('bTiltGo').dataset.done;
+  $('tMsg').textContent = tiltCal ? 'Redo head tilt? It now sets right and left separately.' : 'Set up head tilt: tilt right = next line, tilt left = back a line.';
+  $('tBig').textContent = ''; $('tLive').textContent = ''; $('tNote').textContent = '';
+  $('bTiltGo').hidden = false; $('bTiltGo').textContent = 'Begin'; delete $('bTiltGo').dataset.done;
+  tiltTest = false;
   show('tilt', 'bTiltGo');
 });
-$('bTiltGo').addEventListener('click', () => { if ($('bTiltGo').dataset.done) history.back(); else calibrate(); });
+$('bTiltGo').addEventListener('click', () => { if ($('bTiltGo').dataset.done) { tiltTest = false; history.back(); } else calibrate(); });
 
 /* ---------- Back button ---------- */
-window.addEventListener('popstate', () => { stopSong(); show('list'); renderList(); });
+window.addEventListener('popstate', () => { tiltTest = false; stopSong(); show('list'); renderList(); });
 
 /* =====================================================================
    Voice control (WebMCP). Optional; the app works without it.
@@ -498,6 +579,8 @@ const TOOLS = [
     execute: async ({ lines }) => { if (!inSong()) return reply('Open a song first.'); go(Math.max(1, lines || 1)); return reply('Moved ahead.'); } },
   { name: 'previous_line', description: 'Move back a number of lines (default 1).', inputSchema: { type: 'object', properties: { lines: { type: 'integer' } } },
     execute: async ({ lines }) => { if (!inSong()) return reply('Open a song first.'); go(-Math.max(1, lines || 1)); return reply('Moved back.'); } },
+  { name: 'save_tempo', description: 'Save the current tempo (after making it faster or slower) as this song\'s BPM, so it opens at that speed next time.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { if (!inSong()) return reply('Open a song first.'); if (Math.abs(P.speed - 1) < 0.001) return reply(`The tempo has not changed; it is ${bpm()} bpm.`); return reply(await saveBpm()); } },
   { name: 'change_tempo', description: 'Make the scrolling faster or slower. Use "faster" or "slower".', inputSchema: { type: 'object', properties: { direction: { type: 'string' } }, required: ['direction'] },
     execute: async ({ direction }) => { if (!inSong()) return reply('Open a song first.'); changeSpeed(/slow/i.test(direction) ? 0.95 : 1.05); return reply(`Now ${bpm()} bpm.`); } }
 ];
