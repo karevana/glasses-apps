@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Stronger Humans on Meta Ray-Ban Display: today against your own plan, log a meal by voice, and options to close the gaps when you ask.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>Stronger Humans</title>
+<style>
+  /* Glasses view of Stronger Humans (Plan · Do · Check · Act).
+     Additive display: black = see-through, so bright text on black.
+     Same n8n endpoints and Google Sheet as the phone page. Neutral by design: one colour, no scores. */
+  :root {
+    --accent: #3df5c8;   /* Stronger Humans green */
+    --plan: #7fb2ff;     /* plan bars */
+    --text: #ffffff;
+    --dim: #9fb0b8;
+    --focus: #ffd84a;    /* yellow focus ring for the D-pad */
+    --u: min(1vw, 1vh);  /* 600x600 => 6px */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; padding: calc(var(--u) * 3.5); gap: calc(var(--u) * 2); }
+  .screen.active { display: flex; }
+  button, input { font: inherit; color: inherit; }
+  button { background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.5); cursor: pointer;
+    padding: calc(var(--u) * 2.4) calc(var(--u) * 2); font-size: calc(var(--u) * 4.6); font-weight: 700; }
+  button.go { background: #062b24; border-color: var(--accent); }
+  button:focus, input:focus, .scroll:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u) * .6) var(--focus); }
+  .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .brand { font-size: calc(var(--u) * 5); font-weight: 800; margin: 0; }
+  .brand span { color: var(--accent); }
+  .date { color: var(--dim); font-size: calc(var(--u) * 4); }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(var(--u) * 1.8); margin-top: auto; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 1.8); margin-top: auto; }
+  .msg { color: var(--dim); font-size: calc(var(--u) * 4.2); line-height: 1.35; text-align: center; margin: auto 0; }
+  .msg b { color: var(--text); }
+  .err { color: #ff9a9a; }
+
+  /* today vs plan */
+  #bars { display: flex; flex-direction: column; gap: calc(var(--u) * 2.2); margin-top: calc(var(--u) * 1); }
+  .line { display: flex; justify-content: space-between; align-items: baseline; font-size: calc(var(--u) * 5); }
+  .line span { color: var(--dim); font-size: calc(var(--u) * 4.4); }
+  .bar { height: calc(var(--u) * 2.4); border-radius: calc(var(--u) * 1.2); background: #1b1f24; margin-top: calc(var(--u) * .8); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--plan); border-radius: inherit; }
+  .meals { color: var(--dim); font-size: calc(var(--u) * 3.8); }
+
+  /* log */
+  .label { color: var(--dim); font-size: calc(var(--u) * 4); }
+  #words { width: 100%; background: #0d0d0d; border: calc(var(--u) * .5) solid #444; border-radius: calc(var(--u) * 2.5);
+    padding: calc(var(--u) * 3); font-size: calc(var(--u) * 5); }
+  #words::placeholder { color: #7d8a90; }
+  .chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--u) * 1.4); }
+  .chips button { font-size: calc(var(--u) * 3.6); padding: calc(var(--u) * 1.8) 0; font-weight: 600; }
+  .chips button.on { background: var(--accent); color: #032019; border-color: var(--accent); }
+
+  /* result / options / week */
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; border: calc(var(--u) * .5) solid transparent; border-radius: calc(var(--u) * 2.5);
+    padding: calc(var(--u) * 1.5); font-size: calc(var(--u) * 4.4); line-height: 1.4; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .scroll p { margin: 0 0 calc(var(--u) * 2); }
+  .scroll ul { margin: 0 0 calc(var(--u) * 2); padding-left: calc(var(--u) * 5); }
+  .scroll li { margin-bottom: calc(var(--u) * 1.2); }
+  .desc { font-weight: 700; font-size: calc(var(--u) * 5); }
+  .nums { color: var(--dim); font-size: calc(var(--u) * 4); margin-top: calc(var(--u) * 1.5); }
+  .nums b { color: var(--text); }
+  .vs { margin-top: calc(var(--u) * 3); font-size: calc(var(--u) * 4.2); }
+  .vs div { display: flex; justify-content: space-between; padding: calc(var(--u) * .8) 0; border-bottom: 1px solid #222; }
+  .vs span { color: var(--dim); }
+  table { width: 100%; border-collapse: collapse; font-size: calc(var(--u) * 4.2); }
+  th, td { text-align: right; padding: calc(var(--u) * 1.2) calc(var(--u) * .8); border-bottom: 1px solid #222; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--dim); font-weight: 600; font-size: calc(var(--u) * 3.6); }
+  tr.plan td { color: var(--plan); font-weight: 700; }
+  td.none { color: #4d575d; }
+  .spin { width: calc(var(--u) * 8); height: calc(var(--u) * 8); margin: 0 auto calc(var(--u) * 3); border-radius: 50%;
+    border: calc(var(--u) * 1) solid #222; border-top-color: var(--accent); animation: s .8s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- TODAY (Check) -->
+<section class="screen active" id="today">
+  <div class="top"><h1 class="brand">Stronger <span>Humans</span></h1><div class="date" id="dateLbl"></div></div>
+  <div id="bars"><div class="msg"><div class="spin"></div>Loading today…</div></div>
+  <div class="row">
+    <button class="go" id="bLog">Log meal</button>
+    <button id="bOptions">Options</button>
+    <button id="bWeek">Week</button>
+  </div>
+</section>
+
+<!-- LOG (Do) -->
+<section class="screen" id="log">
+  <div class="label">What did you eat?</div>
+  <input id="words" type="text" maxlength="1000" placeholder="Pinch, then say it" autocomplete="off">
+  <div class="chips" id="chips"></div>
+  <div class="row2">
+    <button id="bLogBack">Back</button>
+    <button class="go" id="bLogIt">Log it</button>
+  </div>
+</section>
+
+<!-- WORKING -->
+<section class="screen" id="work"><div class="msg"><div class="spin"></div><span id="workMsg">Working…</span></div></section>
+
+<!-- RESULT / OPTIONS / WEEK share one reading screen -->
+<section class="screen" id="read">
+  <div class="label" id="readTitle"></div>
+  <div class="scroll" id="readBody" tabindex="0"></div>
+  <div class="row2" id="readBtns"></div>
+</section>
+
+<script>
+const API = 'https://n8n.rainandwind.ca/webhook/';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+/* ---------- private key: ?k= once, then remembered on the glasses ---------- */
+(() => { const k = new URLSearchParams(location.search).get('k'); if (k) try { localStorage.setItem('coach.key', JSON.stringify(k)); } catch (e) {} })();
+const KEY = () => { try { return JSON.parse(localStorage.getItem('coach.key')) || ''; } catch (e) { return ''; } };
+
+const pad = n => String(n).padStart(2, '0');
+const localDate = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const localTime = (d = new Date()) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+$('dateLbl').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+async function call(path, data) {
+  if (!KEY()) throw new Error('Open this app once from your private address (with ?k=).');
+  const r = data
+    ? await fetch(API + path, { method: 'POST', body: new URLSearchParams(Object.assign({ k: KEY() }, data)) })
+    : await fetch(`${API}${path}?k=${encodeURIComponent(KEY())}&date=${localDate()}`, { cache: 'no-store' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.ok) throw new Error(d.error || 'Something went wrong. Try again.');
+  return d;
+}
+
+/* ---------- screens + Back (browser history) ---------- */
+let screen = 'today';
+function show(name, focusId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === name));
+  screen = name;
+  if (focusId) setTimeout(() => { const el = $(focusId); if (el) el.focus(); }, 0);
+}
+const depth = () => (history.state && history.state.depth) || 0;
+function go(name, focusId) { if (screen !== name) history.pushState({ screen: name, depth: depth() + 1 }, ''); show(name, focusId); }
+function home() { const d = depth(); if (d > 0) history.go(-d); else { show('today', 'bLog'); loadToday(); } }  // popstate shows Today
+window.addEventListener('popstate', e => {
+  const t = (e.state && e.state.screen) || 'today';
+  if (t === 'log') show('log', 'words');
+  else { show('today', 'bLog'); loadToday(); }
+});
+
+/* ================= CHECK: today vs plan ================= */
+let last = null;   // latest summary, also used by the voice tools
+async function loadToday() {
+  try {
+    const d = await call('sh-summary');
+    last = d;
+    const vs = d.today.vs_plan || [];
+    const n = d.today.meals.length;
+    const mealsLine = `<div class="meals">${n ? n + ' meal' + (n > 1 ? 's' : '') + ' logged today' : 'No meals logged yet today'}</div>`;
+    if (d.plan && vs.length) {
+      $('bars').innerHTML = vs.slice(0, 4).map(v => `
+        <div><div class="line"><b>${esc(v.label)}</b><span>${v.actual} of ${v.plan}${v.unit === 'servings' ? '' : ' ' + esc(v.unit)}</span></div>
+        <div class="bar"><i style="width:${Math.min(100, Math.max(0, v.pct))}%"></i></div></div>`).join('') + mealsLine;
+    } else {
+      const t = d.today.totals;
+      $('bars').innerHTML = `<div class="line"><b>Protein</b><span>${t.protein_g} g</span></div>
+        <div class="line"><b>Fibre</b><span>${t.fibre_g} g</span></div>
+        <div class="line"><b>Fruit/veg</b><span>${t.fruit_veg_servings}</span></div>${mealsLine}
+        <div class="meals">Set your plan on your phone to see today against it.</div>`;
+    }
+  } catch (err) { $('bars').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; }
+}
+function todayText(d) {
+  if (!d) return 'Today is not loaded yet.';
+  const n = d.today.meals.length;
+  const base = n ? `${n} meal${n > 1 ? 's' : ''} logged today.` : 'No meals logged yet today.';
+  const vs = d.today.vs_plan || [];
+  if (!d.plan || !vs.length) { const t = d.today.totals; return `${base} Protein ${t.protein_g} grams, fibre ${t.fibre_g} grams, fruit and veg ${t.fruit_veg_servings} servings. No plan is set yet.`; }
+  return base + ' Against your plan: ' + vs.map(v => `${v.label} ${v.actual} of ${v.plan}${v.unit === 'servings' ? ' servings' : v.unit === 'g' ? ' grams' : ' ' + v.unit}`).join(', ') + '.';
+}
+
+/* ================= DO: log a meal by words ================= */
+const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+function guessMeal() { const h = new Date().getHours() + new Date().getMinutes() / 60; return h < 10.5 ? 'Breakfast' : h < 14.5 ? 'Lunch' : h < 16.5 ? 'Snack' : h < 21 ? 'Dinner' : 'Snack'; }
+let meal = guessMeal();
+function renderChips() {
+  $('chips').innerHTML = MEALS.map(m => `<button class="${m === meal ? 'on' : ''}" data-m="${m}" id="chip${m}">${m}</button>`).join('');
+  $('chips').querySelectorAll('button').forEach(b => b.onclick = () => { meal = b.dataset.m; renderChips(); $('bLogIt').focus(); });
+}
+$('bLog').onclick = () => { meal = guessMeal(); renderChips(); $('words').value = ''; go('log', 'words'); };
+$('bLogBack').onclick = () => history.back();
+$('words').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('bLogIt').click(); } });
+$('words').addEventListener('change', () => { if ($('words').value.trim()) $('bLogIt').focus(); });
+$('bLogIt').onclick = () => { const t = $('words').value.trim(); if (!t) { $('words').focus(); return; } logMeal(t, meal); };
+
+async function logMeal(text, mealName) {
+  go('work'); $('workMsg').textContent = 'Estimating… about 5 seconds';
+  try {
+    const d = await call('sh-meal', { text, source: 'spoken', meal: mealName || guessMeal(), date: localDate(), time: localTime() });
+    $('words').value = '';
+    const m = d.meal, c = d.check;
+    const vs = c && c.has_plan ? c.vs_plan : [];
+    readScreen(`Logged · ${esc(m.meal || '')}`,
+      `<div class="desc">${esc(m.description)}</div>
+       <div class="nums">Protein <b>${m.protein_g} g</b> · Fibre <b>${m.fibre_g} g</b> · Fruit/veg <b>${m.fruit_veg_servings}</b> · ~<b>${m.calories}</b> kcal</div>
+       ${vs.length ? '<div class="vs"><div><b>Today so far</b><span>vs plan</span></div>' + vs.map(v => `<div><b>${esc(v.label)}</b><span>${v.actual} of ${v.plan}</span></div>`).join('') + '</div>' : ''}`,
+      [['Log another', () => { $('words').value = ''; meal = guessMeal(); renderChips(); history.back(); }], ['Done', home, true]]);
+    loadToday();
+    return { meal: m, check: c };
+  } catch (err) {
+    readScreen('Not logged', `<p class="err">${esc(err.message)}</p>`, [['Back', () => history.back(), true]]);
+    throw err;
+  }
+}
+
+/* ================= ACT: options (only when asked) ================= */
+function md(s) {   // tiny markdown: **bold**, - bullets, paragraphs
+  const lines = esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split('\n');
+  let out = '', inList = false;
+  for (const l of lines) {
+    if (/^\s*[-•]\s+/.test(l)) { if (!inList) { out += '<ul>'; inList = true; } out += '<li>' + l.replace(/^\s*[-•]\s+/, '') + '</li>'; }
+    else { if (inList) { out += '</ul>'; inList = false; } if (l.trim()) out += '<p>' + l + '</p>'; }
+  }
+  return out + (inList ? '</ul>' : '');
+}
+async function getOptions(question) {
+  go('work'); $('workMsg').textContent = 'Thinking…';
+  try {
+    const d = await call('sh-ask', { question: question || '', date: localDate() });
+    readScreen(question ? esc(question) : "Options to close today's gaps", md(d.answer), [['More ▾', scrollMore], ['Done', home, true]]);
+    return d.answer;
+  } catch (err) { readScreen('Options', `<p class="err">${esc(err.message)}</p>`, [['Back', () => history.back(), true]]); throw err; }
+}
+$('bOptions').onclick = () => getOptions('');
+
+/* ================= CHECK: week ================= */
+async function showWeek() {
+  go('work'); $('workMsg').textContent = 'Loading the week…';
+  try {
+    const d = await call('sh-summary'); last = d;
+    const plan = d.plan;
+    const head = { protein_g: 'Protein', fibre_g: 'Fibre', fruit_veg_servings: 'F/V' };
+    let cols = plan ? Object.keys(head).filter(k => Number(plan[k]) > 0) : [];
+    if (!cols.length) cols = Object.keys(head);
+    const html = `<table><tr><th>Day</th>${cols.map(k => `<th>${head[k]}</th>`).join('')}</tr>` +
+      (plan ? `<tr class="plan"><td>Plan</td>${cols.map(k => `<td>${esc(plan[k])}</td>`).join('')}</tr>` : '') +
+      d.week.days.map(x => { const day = new Date(x.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short' });
+        return x.meals ? `<tr><td>${day}</td>${cols.map(k => `<td>${x[k]}</td>`).join('')}</tr>` : `<tr><td>${day}</td><td class="none" colspan="${cols.length}">—</td></tr>`; }).join('') + '</table>';
+    readScreen('This week', html, [['More ▾', scrollMore], ['Done', home, true]]);
+  } catch (err) { readScreen('This week', `<p class="err">${esc(err.message)}</p>`, [['Back', () => history.back(), true]]); }
+}
+$('bWeek').onclick = showWeek;
+
+/* ---------- shared reading screen ---------- */
+function readScreen(title, html, buttons) {
+  $('readTitle').innerHTML = title;
+  $('readBody').innerHTML = html;
+  $('readBody').scrollTop = 0;
+  $('readBtns').innerHTML = '';
+  let focusId = null;
+  buttons.forEach(([label, fn, primary], i) => {
+    const b = document.createElement('button'); b.textContent = label; b.id = 'rb' + i;
+    if (primary) { b.className = 'go'; focusId = b.id; }
+    b.onclick = fn; $('readBtns').appendChild(b);
+  });
+  // the working screen is replaced, not stacked, so Back from here returns to Today
+  history.replaceState({ screen: 'read', depth: depth() }, '');
+  show('read', focusId);
+  setTimeout(() => { const more = [...$('readBtns').children].find(b => b.textContent.startsWith('More'));
+    if (more) more.style.visibility = $('readBody').scrollHeight > $('readBody').clientHeight + 4 ? 'visible' : 'hidden'; }, 50);
+}
+function scrollMore() {
+  const b = $('readBody');
+  if (b.scrollTop + b.clientHeight >= b.scrollHeight - 4) b.scrollTop = 0;
+  else b.scrollBy({ top: b.clientHeight * 0.8, behavior: 'smooth' });
+}
+$('readBody').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); $('readBody').scrollBy({ top: 120, behavior: 'smooth' }); }
+  if (e.key === 'ArrowUp') { e.preventDefault(); $('readBody').scrollBy({ top: -120, behavior: 'smooth' }); }
+});
+
+/* ================= Voice: tools for Meta AI (WebMCP) ================= */
+const reply = text => ({ content: [{ type: 'text', text }] });
+const TOOLS = [
+  {
+    name: 'log_meal',
+    description: 'Log a meal the person ate in Stronger Humans, from their own description. Use their words as the description. Optional meal: Breakfast, Lunch, Dinner or Snack.',
+    inputSchema: { type: 'object', properties: {
+      description: { type: 'string', description: 'What they ate, in their words, e.g. "chicken salad and an apple"' },
+      meal: { type: 'string', enum: MEALS, description: 'Which meal; leave out to pick by time of day' } }, required: ['description'] },
+    execute: async ({ description, meal: m }) => {
+      try {
+        const r = await logMeal(String(description || ''), MEALS.includes(m) ? m : guessMeal());
+        const vs = r.check && r.check.has_plan ? r.check.vs_plan : [];
+        return reply(`Logged: ${r.meal.description} About ${r.meal.protein_g} grams protein, ${r.meal.fibre_g} grams fibre.` +
+          (vs.length ? ' Today so far: ' + vs.map(v => `${v.label} ${v.actual} of ${v.plan}`).join(', ') + '.' : ''));
+      } catch (e) { return reply('Not logged: ' + e.message); }
+    }
+  },
+  {
+    name: 'show_today',
+    description: 'Show and read out today in Stronger Humans: meals logged and how today compares with the person\'s own plan.',
+    inputSchema: { type: 'object', properties: {} },
+    execute: async () => { home(); await loadToday(); return reply(todayText(last)); }
+  },
+  {
+    name: 'get_options',
+    description: 'Only when the person asks: options to close today\'s gaps against their own plan in Stronger Humans, or an answer to their own food question.',
+    inputSchema: { type: 'object', properties: { question: { type: 'string', description: 'Their question; leave out for options to close today\'s gaps' } } },
+    execute: async ({ question } = {}) => { try { return reply(await getOptions(question || '')); } catch (e) { return reply(e.message); } }
+  },
+  {
+    name: 'show_week',
+    description: 'Show the last 7 days against the person\'s plan in Stronger Humans.',
+    inputSchema: { type: 'object', properties: {} },
+    execute: async () => { await showWeek(); return reply('Showing the week.'); }
+  }
+];
+(function registerVoiceTools() {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || typeof mc.registerTool !== 'function') return;   // normal browser: skip quietly
+  for (const t of TOOLS) { try { const p = mc.registerTool(t); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+})();
+
+/* ---------- start ---------- */
+history.replaceState({ screen: 'today', depth: 0 }, '');
+show('today', 'bLog');
+loadToday();
+</script>
+</body>
+</html>
