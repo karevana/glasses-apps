@@ -39,6 +39,8 @@
   .msg { color: var(--dim); font-size: calc(var(--u) * 4.2); line-height: 1.35; text-align: center; margin: auto 0; }
   .msg b { color: var(--text); }
   .err { color: #ff9a9a; }
+  .hidden { display: none !important; }
+  #bStack:not(.hidden) + .row { margin-top: 0; }
 
   /* today vs plan */
   #bars { display: flex; flex-direction: column; gap: calc(var(--u) * 2.2); margin-top: calc(var(--u) * 1); }
@@ -87,6 +89,7 @@
 <section class="screen active" id="today">
   <div class="top"><h1 class="brand">Stronger <span>Humans</span></h1><div class="date" id="dateLbl"></div></div>
   <div id="bars"><div class="msg"><div class="spin"></div>Loading today…</div></div>
+  <button class="go hidden" id="bStack" style="margin-top:auto">☕ Morning stack</button>
   <div class="row">
     <button class="go" id="bLog">Log meal</button>
     <button id="bOptions">Options</button>
@@ -157,16 +160,24 @@ window.addEventListener('popstate', e => {
 
 /* ================= CHECK: today vs plan ================= */
 let last = null;   // latest summary, also used by the voice tools
+/* "of 90" or, for protein with a top set, "of 90–120" */
+const ofPlan = (v, plan) => v.key === 'protein_g' && plan && Number(plan.protein_max_g) > 0 ? `${v.plan}–${plan.protein_max_g}` : `${v.plan}`;
+const stackOf = d => d ? d.today.meals.find(m => String(m.meal || '').toLowerCase() === 'morning stack') || null : null;
 async function loadToday() {
   try {
     const d = await call('sh-summary');
     last = d;
     const vs = d.today.vs_plan || [];
     const n = d.today.meals.length;
-    const mealsLine = `<div class="meals">${n ? n + ' meal' + (n > 1 ? 's' : '') + ' logged today' : 'No meals logged yet today'}</div>`;
+    const stack = stackOf(d);
+    const g = d.plan && Number(d.plan.stack_protein_g) > 0 ? d.plan.stack_protein_g : 30;
+    $('bStack').textContent = `☕ Morning stack · ${g} g`;
+    $('bStack').classList.toggle('hidden', !!stack);
+    const mealsLine = `<div class="meals">${n ? n + ' logged today' : 'Nothing logged yet today'}${stack ? ` · ☕ stack ✓ ${esc(stack.time || '')}` : ''}</div>`;
+    if (!stack && new Date().getHours() < 12 && screen === 'today') $('bStack').focus();
     if (d.plan && vs.length) {
-      $('bars').innerHTML = vs.slice(0, 4).map(v => `
-        <div><div class="line"><b>${esc(v.label)}</b><span>${v.actual} of ${v.plan}${v.unit === 'servings' ? '' : ' ' + esc(v.unit)}</span></div>
+      $('bars').innerHTML = vs.slice(0, stack ? 4 : 3).map(v => `
+        <div><div class="line"><b>${esc(v.label)}</b><span>${v.actual} of ${ofPlan(v, d.plan)}${v.unit === 'servings' ? '' : ' ' + esc(v.unit)}</span></div>
         <div class="bar"><i style="width:${Math.min(100, Math.max(0, v.pct))}%"></i></div></div>`).join('') + mealsLine;
     } else {
       const t = d.today.totals;
@@ -183,8 +194,23 @@ function todayText(d) {
   const base = n ? `${n} meal${n > 1 ? 's' : ''} logged today.` : 'No meals logged yet today.';
   const vs = d.today.vs_plan || [];
   if (!d.plan || !vs.length) { const t = d.today.totals; return `${base} Protein ${t.protein_g} grams, fibre ${t.fibre_g} grams, fruit and veg ${t.fruit_veg_servings} servings. No plan is set yet.`; }
-  return base + ' Against your plan: ' + vs.map(v => `${v.label} ${v.actual} of ${v.plan}${v.unit === 'servings' ? ' servings' : v.unit === 'g' ? ' grams' : ' ' + v.unit}`).join(', ') + '.';
+  const stack = stackOf(d);
+  return base + (stack ? ' Morning stack is logged.' : '') + ' Against your plan: ' + vs.map(v => `${v.label} ${v.actual} of ${ofPlan(v, d.plan)}${v.unit === 'servings' ? ' servings' : v.unit === 'g' ? ' grams' : ' ' + v.unit}`).join(', ') + '.';
 }
+
+/* ================= DO: morning stack, one tap ================= */
+async function logStack() {
+  go('work'); $('workMsg').textContent = 'Logging your morning stack…';
+  try {
+    const d = await call('sh-stack', { date: localDate(), time: localTime() });
+    readScreen(d.already ? 'Already logged today' : 'Logged · Morning stack',
+      `<div class="desc">☕ Morning stack ✓</div><div class="nums">Protein <b>${d.protein_g} g</b></div><p class="nums">${esc(d.items)}</p>`,
+      [['Log a meal', () => { meal = guessMeal(); renderChips(); $('words').value = ''; history.replaceState({ screen: 'log', depth: depth() }, ''); show('log', 'words'); }], ['Done', home, true]]);
+    loadToday();
+    return d;
+  } catch (err) { readScreen('Not logged', `<p class="err">${esc(err.message)}</p>`, [['Back', () => history.back(), true]]); throw err; }
+}
+$('bStack').onclick = () => logStack();
 
 /* ================= DO: log a meal by words ================= */
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -250,7 +276,7 @@ async function showWeek() {
     let cols = plan ? Object.keys(head).filter(k => Number(plan[k]) > 0) : [];
     if (!cols.length) cols = Object.keys(head);
     const html = `<table><tr><th>Day</th>${cols.map(k => `<th>${head[k]}</th>`).join('')}</tr>` +
-      (plan ? `<tr class="plan"><td>Plan</td>${cols.map(k => `<td>${esc(plan[k])}</td>`).join('')}</tr>` : '') +
+      (plan ? `<tr class="plan"><td>Plan</td>${cols.map(k => `<td>${esc(k === 'protein_g' && Number(plan.protein_max_g) > 0 ? plan[k] + '–' + plan.protein_max_g : plan[k])}</td>`).join('')}</tr>` : '') +
       d.week.days.map(x => { const day = new Date(x.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short' });
         return x.meals ? `<tr><td>${day}</td>${cols.map(k => `<td>${x[k]}</td>`).join('')}</tr>` : `<tr><td>${day}</td><td class="none" colspan="${cols.length}">—</td></tr>`; }).join('') + '</table>';
     readScreen('This week', html, [['More ▾', scrollMore], ['Done', home, true]]);
@@ -302,6 +328,15 @@ const TOOLS = [
         return reply(`Logged: ${r.meal.description} About ${r.meal.protein_g} grams protein, ${r.meal.fibre_g} grams fibre.` +
           (vs.length ? ' Today so far: ' + vs.map(v => `${v.label} ${v.actual} of ${v.plan}`).join(', ') + '.' : ''));
       } catch (e) { return reply('Not logged: ' + e.message); }
+    }
+  },
+  {
+    name: 'log_morning_stack',
+    description: 'Log the person\'s morning stack (their usual morning protein drink and supplements) in Stronger Humans. Use when they say they had or drank their morning stack, shake or protein drink. Logs once per day.',
+    inputSchema: { type: 'object', properties: {} },
+    execute: async () => {
+      try { const d = await logStack(); return reply(d.already ? `Your morning stack was already logged today${d.time ? ' at ' + d.time : ''}.` : `Morning stack logged: ${d.protein_g} grams protein.`); }
+      catch (e) { return reply('Not logged: ' + e.message); }
     }
   },
   {

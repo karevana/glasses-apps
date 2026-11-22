@@ -107,9 +107,13 @@
   <h2><span class="step">PLAN</span> My plan</h2>
   <div class="card" id="planCard"><div class="status"><div class="spin"></div>Loading…</div></div>
 
+  <h2>Weight</h2>
+  <div class="card" id="weightCard"><div class="status"><div class="spin"></div>Loading…</div></div>
+
   <!-- DO: log a meal -->
   <h2><span class="step">DO</span> Log a meal</h2>
   <div class="card">
+    <button class="wide" id="bStack" style="margin:0 0 12px">☕ Morning stack</button>
     <div class="snap">
       <button class="btn primary" id="bCam"><span class="ic">📷</span>Take photo</button>
       <button class="btn" id="bPick"><span class="ic">🖼️</span>Choose photo</button>
@@ -175,18 +179,33 @@ const post = (path, data) => fetch(API + path, { method: 'POST', body: new URLSe
 
 /* ================= PLAN ================= */
 const PLAN_FIELDS = [
-  ['protein_g', 'Protein (g/day)'], ['fibre_g', 'Fibre (g/day)'], ['fruit_veg_servings', 'Fruit & veg (servings/day)'],
+  ['protein_g', 'Protein minimum (g/day)'], ['protein_max_g', 'Protein top (g/day)'],
+  ['fibre_g', 'Fibre (g/day)'], ['fruit_veg_servings', 'Fruit & veg (servings/day)'],
   ['calories', 'Calories (kcal/day)'], ['carbs_g', 'Carbs (g/day)'], ['fat_g', 'Fat (g/day)']
 ];
+const DAILY_TARGETS = ['protein_g', 'fibre_g', 'fruit_veg_servings', 'calories', 'carbs_g', 'fat_g'];
 let plan = null, editingPlan = false;
+const has = k => plan && Number(plan[k]) > 0;
+/* protein shown as a range when a top is set: "90–120" */
+const planVal = k => k === 'protein_g' && has('protein_max_g') ? `${plan.protein_g}–${plan.protein_max_g}` : plan[k];
+const prettyDate = s => s ? new Date(s + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 function renderPlan() {
   if (editingPlan || !plan) {
     const v = k => esc(plan && plan[k] !== '' && plan[k] != null ? plan[k] : '');
+    const numIn = (k, l) => `<label>${l}<input class="field" type="number" inputmode="decimal" min="0" step="any" id="p_${k}" value="${v(k)}"></label>`;
     $('planCard').innerHTML = `
       ${plan ? '' : '<div style="margin-bottom:4px"><b>Set your own targets.</b> <span class="hint">From your dietitian, doctor, coach or your own goals. Fill only what you track; leave the rest blank.</span></div>'}
-      <div class="grid2">${PLAN_FIELDS.map(([k, l]) => `<label>${l}<input class="field" type="number" inputmode="decimal" min="0" step="any" id="p_${k}" value="${v(k)}"></label>`).join('')}</div>
+      <div class="grid2">${PLAN_FIELDS.map(([k, l]) => numIn(k, l)).join('')}${numIn('goal_weight_lb', 'Goal weight (lb)')}</div>
       <label>Eating style <input class="field" id="p_eating_style" maxlength="200" placeholder="e.g. vegetarian, Mediterranean, no dairy" value="${v('eating_style')}"></label>
       <label>Notes <textarea class="field" id="p_notes" maxlength="600" placeholder="Anything the options should respect (foods you avoid, budget, cooking time)">${v('notes')}</textarea></label>
+      <div style="margin-top:14px"><b>Morning stack</b> <span class="hint">One tap logs it each morning.</span></div>
+      <label>What's in it <input class="field" id="p_stack_items" maxlength="300" placeholder="e.g. Protein powder, collagen, plant sterols, psyllium husk" value="${v('stack_items')}"></label>
+      <div class="grid2">${numIn('stack_protein_g', 'Protein in it (g)')}</div>
+      <div style="margin-top:14px"><b>Cholesterol</b> <span class="hint">Leave blank until it's booked.</span></div>
+      <div class="grid2">
+        <label>Recheck date<input class="field" type="date" id="p_cholesterol_recheck_date" value="${v('cholesterol_recheck_date')}"></label>
+        <label>Result (as you write it)<input class="field" id="p_cholesterol_result" maxlength="120" placeholder="e.g. LDL 3.1" value="${v('cholesterol_result')}"></label>
+      </div>
       <button class="wide" id="bSavePlan">Save my plan</button>
       ${plan ? '<button class="ghost" id="bCancelPlan" style="margin-top:8px">Cancel</button>' : ''}
       <div id="planStatus"></div>`;
@@ -194,25 +213,58 @@ function renderPlan() {
     if ($('bCancelPlan')) $('bCancelPlan').onclick = () => { editingPlan = false; renderPlan(); };
     return;
   }
-  const set = PLAN_FIELDS.filter(([k]) => Number(plan[k]) > 0);
+  const tiles = PLAN_FIELDS.filter(([k]) => k !== 'protein_max_g' && has(k)).map(([k, l]) => [planVal(k), l.replace(/ minimum/, '').replace(/ \(.*\)/, '')]);
+  if (has('goal_weight_lb')) tiles.push([plan.goal_weight_lb + ' lb', 'Goal weight']);
   const when = plan.updated_at ? new Date(plan.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
   $('planCard').innerHTML = `
     <div class="planhead"><small>Set ${esc(when)}</small><button class="ghost" id="bEditPlan">Edit</button></div>
-    <div class="planview">${set.map(([k, l]) => `<div><b>${esc(plan[k])}</b><span>${esc(l.replace(/ \(.*\)/, ''))}</span></div>`).join('')}</div>
+    <div class="planview">${tiles.map(([val, l]) => `<div><b>${esc(val)}</b><span>${esc(l)}</span></div>`).join('')}</div>
     ${plan.eating_style ? `<div class="note">Eating style: ${esc(plan.eating_style)}</div>` : ''}
-    ${plan.notes ? `<div class="note">${esc(plan.notes)}</div>` : ''}`;
+    ${plan.notes ? `<div class="note">${esc(plan.notes)}</div>` : ''}
+    ${plan.stack_items ? `<div class="note">Morning stack: ${esc(plan.stack_items)}${has('stack_protein_g') ? ' · ' + esc(plan.stack_protein_g) + ' g protein' : ''}</div>` : ''}
+    <div class="note">Cholesterol recheck: ${plan.cholesterol_recheck_date ? esc(prettyDate(plan.cholesterol_recheck_date)) : 'not booked yet'}${plan.cholesterol_result ? ' · Result: ' + esc(plan.cholesterol_result) : ''}</div>`;
   $('bEditPlan').onclick = () => { editingPlan = true; renderPlan(); };
 }
 async function savePlan() {
   if (needKey()) return;
   const data = {};
   PLAN_FIELDS.forEach(([k]) => { data[k] = $('p_' + k).value.trim(); });
-  data.eating_style = $('p_eating_style').value.trim();
-  data.notes = $('p_notes').value.trim();
-  if (!PLAN_FIELDS.some(([k]) => Number(data[k]) > 0)) { $('planStatus').innerHTML = '<div class="status err">Add at least one target.</div>'; return; }
+  ['goal_weight_lb', 'eating_style', 'notes', 'stack_items', 'stack_protein_g', 'cholesterol_recheck_date', 'cholesterol_result'].forEach(k => { data[k] = $('p_' + k).value.trim(); });
+  if (!DAILY_TARGETS.some(k => Number(data[k]) > 0)) { $('planStatus').innerHTML = '<div class="status err">Add at least one daily target.</div>'; return; }
   $('bSavePlan').disabled = true; $('planStatus').innerHTML = '<div class="status"><div class="spin"></div>Saving…</div>';
-  try { const d = await post('sh-plan', data); plan = d.plan; editingPlan = false; renderPlan(); loadSummary(); }
+  try { const d = await post('sh-plan2', data); plan = d.plan; editingPlan = false; renderPlan(); loadSummary(); loadWeights(); }
   catch (err) { $('planStatus').innerHTML = `<div class="status err">${esc(err.message)}</div>`; $('bSavePlan').disabled = false; }
+}
+
+/* ---------- weight: manual entries, neutral ---------- */
+let weights = null;
+function renderWeights() {
+  const e = (weights && weights.entries) || [];
+  const latest = e.length ? e[e.length - 1] : null;
+  const goal = has('goal_weight_lb') ? Number(plan.goal_weight_lb) : 0;
+  const recent = e.slice(-5).reverse();
+  $('weightCard').innerHTML = `
+    ${latest ? `<div class="planview"><div><b>${latest.weight_lb}</b><span>lb · ${esc(prettyDate(latest.date))}</span></div>
+      ${goal ? `<div><b>${goal}</b><span>goal lb</span></div><div><b>${Math.round(Math.abs(latest.weight_lb - goal) * 10) / 10}</b><span>lb ${latest.weight_lb > goal ? 'to go' : 'past goal'}</span></div>` : ''}</div>` : '<div class="note" style="margin-top:0">No weight logged yet.</div>'}
+    <div class="row" style="align-items:center"><input class="field" style="flex:1;margin-top:0" type="number" inputmode="decimal" step="0.1" min="60" id="wIn" placeholder="Today's weight (lb)">
+      <button class="ghost" id="bWeight" style="min-height:44px">Log weight</button></div>
+    ${recent.length > 1 ? `<div class="note">Recent: ${recent.map(x => `${esc(prettyDate(x.date).replace(/, \d{4}$/, ''))} ${x.weight_lb}`).join(' · ')}</div>` : ''}
+    <div id="weightStatus"></div>`;
+  $('bWeight').onclick = logWeight;
+  $('wIn').addEventListener('keydown', ev => { if (ev.key === 'Enter') logWeight(); });
+}
+async function loadWeights() {
+  if (!KEY()) return;
+  try { weights = await post('sh-weight', {}); renderWeights(); }
+  catch (err) { $('weightCard').innerHTML = `<div class="status err">${esc(err.message)}</div>`; }
+}
+async function logWeight() {
+  const w = $('wIn').value.trim();
+  if (!w) { $('wIn').focus(); return; }
+  if (needKey()) return;
+  $('bWeight').disabled = true; $('weightStatus').innerHTML = '<div class="status"><div class="spin"></div>Saving…</div>';
+  try { weights = await post('sh-weight', { weight_lb: w, date: localDate() }); renderWeights(); }
+  catch (err) { $('weightStatus').innerHTML = `<div class="status err">${esc(err.message)}</div>`; $('bWeight').disabled = false; }
 }
 
 /* ================= DO ================= */
@@ -305,16 +357,36 @@ function mealCard(m, img) {
     <div class="items">${esc(m.items)}</div></div></div>${nums(m)}
     <div class="note">Confidence: ${esc(m.confidence || '?')}${m.notes ? ' · ' + esc(m.notes) : ''}</div>`;
 }
+/* "of 90" or, for protein with a top set, "of 90–120" */
+const ofPlan = v => v.key === 'protein_g' && has('protein_max_g') ? `${v.plan}–${plan.protein_max_g}` : `${v.plan}`;
 function checkLine(c) {
   if (!c || !c.has_plan || !c.vs_plan.length) return '';
   return `<div class="note" style="margin-top:12px"><b style="color:var(--text)">Today so far vs your plan:</b> ` +
-    c.vs_plan.map(v => `${esc(v.label)} ${v.actual} of ${v.plan}${v.unit === 'servings' ? '' : ' ' + esc(v.unit)}`).join(' · ') + '</div>';
+    c.vs_plan.map(v => `${esc(v.label)} ${v.actual} of ${ofPlan(v)}${v.unit === 'servings' ? '' : ' ' + esc(v.unit)}`).join(' · ') + '</div>';
 }
+
+/* ---------- morning stack: one tap, once a day ---------- */
+let stackDone = null;   // today's stack meal, if logged
+function renderStack() {
+  const g = has('stack_protein_g') ? plan.stack_protein_g : 30;
+  $('bStack').textContent = stackDone ? `✓ Morning stack logged${stackDone.time ? ' at ' + stackDone.time : ''}` : `☕ Morning stack · ${g} g protein`;
+  $('bStack').disabled = !!stackDone;
+}
+$('bStack').onclick = async () => {
+  if (stackDone || needKey()) return;
+  $('bStack').disabled = true; $('result').innerHTML = '';
+  $('status').innerHTML = '<div class="status"><div class="spin"></div>Logging your morning stack…</div>';
+  try {
+    const d = await post('sh-stack', { date: localDate(), time: localTime() });
+    $('status').innerHTML = `<div class="note">${d.already ? 'Already logged today' : 'Logged'}: ${esc(d.items)} · ${d.protein_g} g protein</div>`;
+    loadSummary();
+  } catch (err) { $('status').innerHTML = `<div class="status err">${esc(err.message)}</div>`; $('bStack').disabled = false; }
+};
 
 /* ================= CHECK ================= */
 function vsBars(list) {
   return `<div class="vs">${list.map(v => `
-    <div class="line"><b>${esc(v.label)}</b><span>${v.actual} of ${v.plan} ${esc(v.unit)}</span></div>
+    <div class="line"><b>${esc(v.label)}</b><span>${v.actual} of ${ofPlan(v)} ${esc(v.unit)}</span></div>
     <div class="bar"><i style="width:${Math.min(100, Math.max(0, v.pct))}%"></i></div>`).join('')}</div>`;
 }
 async function loadSummary() {
@@ -324,6 +396,9 @@ async function loadSummary() {
     if (!d.ok) throw new Error(d.error || 'Could not load today.');
     plan = d.plan && d.plan.updated_at ? d.plan : null;
     if (!editingPlan) renderPlan();
+    stackDone = d.today.meals.find(m => String(m.meal || '').toLowerCase() === 'morning stack') || null;
+    renderStack();
+    if (weights) renderWeights();
     const t = d.today.totals;
     const top = plan && d.today.vs_plan.length ? vsBars(d.today.vs_plan)
       : `<div class="totals">
@@ -331,7 +406,7 @@ async function loadSummary() {
           <div><b>${t.fruit_veg_servings}</b><span>fruit/veg</span></div><div><b>${d.today.meals.length}</b><span>meals</span></div></div>
          <div class="note">Set your plan above to see today against your own targets.</div>`;
     $('todayCard').innerHTML = top + `<div style="margin-top:10px">` + (d.today.meals.length
-      ? d.today.meals.map(m => `<div class="meal"><div class="t">${esc(m.time)} · ${esc(m.meal || 'Meal')}<span class="src">${esc(m.source === 'photo' ? '📷 photo' : m.source === 'spoken' ? '🎤 spoken' : '⌨️ typed')}</span></div>
+      ? d.today.meals.map(m => `<div class="meal"><div class="t">${esc(m.time)} · ${esc(m.meal || 'Meal')}<span class="src">${esc(m.source === 'photo' ? '📷 photo' : m.source === 'spoken' ? '🎤 spoken' : m.source === 'stack' ? '☕ stack' : '⌨️ typed')}</span></div>
           <div class="desc">${esc(m.description)}</div></div>`).join('')
       : '<div class="note">No meals logged yet today.</div>') + '</div>';
 
@@ -340,7 +415,7 @@ async function loadSummary() {
     const head = { protein_g: 'Protein', fibre_g: 'Fibre', fruit_veg_servings: 'Fruit/veg' };
     const unit = k => k === 'fruit_veg_servings' ? '' : ' g';
     $('weekCard').innerHTML = `<table><tr><th>Day</th><th>Meals</th>${cols.map(k => `<th>${head[k]}</th>`).join('')}</tr>` +
-      (plan ? `<tr class="plan"><td>Plan</td><td></td>${cols.map(k => `<td>${esc(plan[k])}${unit(k)}</td>`).join('')}</tr>` : '') +
+      (plan ? `<tr class="plan"><td>Plan</td><td></td>${cols.map(k => `<td>${esc(planVal(k))}${unit(k)}</td>`).join('')}</tr>` : '') +
       d.week.days.map(x => { const day = new Date(x.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short' });
         return x.meals ? `<tr><td>${day}</td><td>${x.meals}</td>${cols.map(k => `<td>${x[k]}${unit(k)}</td>`).join('')}</tr>`
                        : `<tr><td>${day}</td><td class="none" colspan="${cols.length + 1}">—</td></tr>`; }).join('') + `</table>` +
@@ -370,7 +445,9 @@ async function ask(question) {
 $('bGap').onclick = () => ask('');
 $('bAsk').onclick = () => { const q = $('q').value.trim(); if (!q) { $('q').focus(); return; } ask(q); };
 
+renderStack();
 loadSummary();
+loadWeights();
 </script>
 </body>
 </html>
