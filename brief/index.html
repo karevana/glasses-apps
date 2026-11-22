@@ -66,6 +66,18 @@
   .top small { display: block; color: var(--accent); font-size: calc(var(--u) * 3.2); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .top div { font-size: calc(var(--u) * 4.6); font-weight: 700; line-height: 1.25; }
   .ctl { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: calc(var(--u) * 1.6); }
+
+  /* ---------- daily picks ---------- */
+  .pcat { color: var(--accent); font-size: calc(var(--u) * 4.2); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+  .react { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: calc(var(--u) * 1.6); }
+  .react[hidden] { display: none; }
+  .react button { font-size: calc(var(--u) * 4); padding: calc(var(--u) * 2) calc(var(--u) * 1); }
+  .react button.watch { grid-column: 1 / -1; background: #2b2108; border-color: var(--accent); }
+  .saved { text-align: center; }
+  .saved .tick { font-size: calc(var(--u) * 16); line-height: 1; color: var(--up); }
+  .saved .what { font-size: calc(var(--u) * 6); font-weight: 800; margin-top: calc(var(--u) * 2); }
+  .saved .sub { color: var(--dim); font-size: calc(var(--u) * 4); margin-top: calc(var(--u) * 1.5); }
+  .saved.err .tick { color: var(--down); }
   #bRead.on { background: #2b2108; border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
@@ -79,6 +91,7 @@
   <div class="bar"><div class="sec" id="secName"></div><div class="count" id="count"></div></div>
   <div class="dots" id="dots"></div>
   <div id="body"></div>
+  <div class="react" id="react" hidden></div>
   <div class="ctl">
     <button id="bPrev">◀ Back</button>
     <button id="bRead">🔊 Read</button>
@@ -88,6 +101,8 @@
 
 <script>
 const API = 'https://n8n.rainandwind.ca/webhook/glasses-brief';
+const FEEDBACK_API = 'https://n8n.rainandwind.ca/webhook/glasses-brief-feedback';
+const TUBE = '../tube/';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -156,6 +171,56 @@ function parseBrief(md) {
   return out;
 }
 
+/* ---------- Daily Picks: today's row from Muse Test Log > Daily Picks, shown after Body ---------- */
+const PICKS = [['food', 'Food'], ['activity', 'Activity'], ['exercise', 'Exercise']];
+const REACTIONS = [['Done', '✓ Done'], ['Skipped', '⏭ Skipped'], ['Loved it', '♥ Loved it']];
+function addPicks(p, picks) {
+  const items = [];
+  if (picks && picks.date === todayISO()) {
+    for (const [cat, label] of PICKS) {
+      const text = String(picks[cat] || '').trim();
+      if (text) items.push({ kind: 'pick', cat, label, text, forDate: picks.date });
+    }
+    const title = String(picks.video_title || '').trim(), link = String(picks.video_link || '').trim();
+    if (title || link) items.push({ kind: 'video', title: title || "Today's video", link });
+  }
+  if (!items.length) items.push({ kind: 'para', text: "Today's picks are not ready yet." });
+  const bi = p.sections.findIndex(s => /^body\b/i.test(s.name));
+  p.sections.splice(bi >= 0 ? bi + 1 : 0, 0, { name: 'Daily Picks', sub: '', items });
+}
+// What was chosen per pick on this device, so revisiting a card shows it (the Feedback tab keeps every rating).
+const ratedKey = it => `${it.forDate}|${it.cat}`;
+const rated = store.get('brief.rated', {});
+let saving = false;
+async function ratePick(it, reaction) {
+  if (saving) return;
+  saving = true; stopReading();
+  $('react').hidden = true;
+  $('body').innerHTML = `<div class="saved"><div class="spin"></div><div class="sub">Saving…</div></div>`;
+  let ok = false, msg = '';
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 10000);
+    const res = await fetch(FEEDBACK_API, { method: 'POST', signal: ctrl.signal,
+      body: new URLSearchParams({ k: KEY(), for_date: it.forDate, category: it.cat, pick: it.text, feedback: reaction }) });
+    clearTimeout(t);
+    const d = await res.json(); ok = !!d.ok; msg = d.error || '';
+  } catch (e) { msg = e.name === 'AbortError' ? 'That took too long.' : 'No connection.'; }
+  if (ok) { rated[ratedKey(it)] = reaction; store.set('brief.rated', rated); }
+  $('body').innerHTML = ok
+    ? `<div class="saved"><div class="tick">✓</div><div class="what">Saved</div><div class="sub">${esc(it.label)}: ${esc(reaction)}</div></div>`
+    : `<div class="saved err"><div class="tick">!</div><div class="what">Not saved</div><div class="sub">${esc(msg || 'Try again.')}</div></div>`;
+  setTimeout(() => { saving = false; if (ok && at < deck.length - 1) at++; renderCard(); $('bNext').focus(); }, ok ? 1200 : 2200);
+  return ok;
+}
+// Video card: Enter opens the link in the Tube app, which plays it straight away.
+const ytId = link => { const m = String(link || '').match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : (/^[A-Za-z0-9_-]{11}$/.test(String(link || '')) ? link : ''); };
+function openVideo(it) {
+  stopReading();
+  const id = ytId(it.link);
+  if (id) location.href = `${TUBE}?v=${id}&title=${encodeURIComponent(it.title)}`;
+  else if (/^https?:\/\//.test(it.link)) location.href = it.link;
+}
+
 /* ---------- build the deck ---------- */
 let brief = null, deck = [], at = 0;
 function buildDeck() {
@@ -169,6 +234,8 @@ function cardSpeech(c) {
   const intro = c.ii === 0 ? c.sec.name + '. ' : '';
   if (it.kind === 'para') return intro + plain(it.text);
   if (it.kind === 'list') return intro + it.rows.map(r => `${r.head} ${r.detail}`).join('. ');
+  if (it.kind === 'pick') return intro + it.label + '. ' + it.text;
+  if (it.kind === 'video') return intro + 'Video. ' + it.title;
   return intro + it.head + '. ' + it.detail;
 }
 const spoken = s => s.replace(/\bC\$/g, 'Canadian $').replace(/—/g, ', ').replace(/\s+/g, ' ');
@@ -214,6 +281,8 @@ function openAt(i) {
 function renderCard() {
   const c = deck[at];
   const body = $('body');
+  const react = $('react');
+  react.hidden = true; react.innerHTML = '';
   if (c.end) {
     $('secName').innerHTML = 'Done';
     $('count').textContent = '';
@@ -229,12 +298,30 @@ function renderCard() {
     else if (it.kind === 'list') body.innerHTML = `<div class="list">${it.rows.map(r => {
         const dir = /\bdown\b/i.test(r.head) ? 'dn' : /\bup\b/i.test(r.head) ? 'up' : '';
         return `<div><b class="${dir}">${esc(r.head)}</b><span>${esc(r.detail)}</span></div>`; }).join('')}</div>`;
+    else if (it.kind === 'pick') {
+      const was = rated[ratedKey(it)];
+      body.innerHTML = `<div class="pcat">${esc(it.label)}${was ? ` <small style="color:var(--dim);letter-spacing:0;text-transform:none">· rated ${esc(was)}</small>` : ''}</div><div class="head">${esc(it.text)}</div>`;
+      react.innerHTML = REACTIONS.map(([v, label], i) => `<button id="r${i}" data-r="${esc(v)}">${label}</button>`).join('');
+      react.hidden = false;
+      react.querySelectorAll('button').forEach(b => b.onclick = () => ratePick(it, b.dataset.r));
+    }
+    else if (it.kind === 'video') {
+      body.innerHTML = `<div class="pcat">Video</div><div class="head">${esc(it.title)}</div>${it.link ? '' : `<div class="detail">No link for this one today.</div>`}`;
+      if (it.link) { react.innerHTML = `<button class="watch" id="bWatch">▶ Watch in Tube</button>`; react.hidden = false; $('bWatch').onclick = () => openVideo(it); }
+    }
     else body.innerHTML = `<div class="head">${esc(it.head)}</div>${it.detail ? `<div class="detail">${inline(it.detail)}</div>` : ''}`;
     const nxt = deck[at + 1];
     $('bNext').textContent = nxt && !nxt.end && nxt.si !== c.si ? `${nxt.sec.name} ▶` : 'Next ▶';
   }
   $('bPrev').disabled = at === 0;
   fit();
+  // Video card: Enter plays it. Otherwise keep focus on a visible button (rating buttons disappear between cards).
+  setTimeout(() => {
+    if (!$('card').classList.contains('active')) return;
+    if ($('bWatch') && !reading) { $('bWatch').focus(); return; }
+    const a = document.activeElement;
+    if (!a || a === document.body || !a.isConnected || a.offsetParent === null || a.disabled) $('bNext').focus();
+  }, 0);
 }
 // Shrink text until the card fits the display, so nothing needs scrolling.
 function fit() {
@@ -246,8 +333,30 @@ function fit() {
   apply();
   while (body.scrollHeight > body.clientHeight + 2 && step < 14) { step++; apply(); }
 }
-$('bNext').onclick = () => { if (deck[at].end) { history.back(); return; } stopReading(); at++; renderCard(); };
-$('bPrev').onclick = () => { if (at > 0) { stopReading(); at--; renderCard(); } };
+$('bNext').onclick = () => { if (saving) return; if (deck[at].end) { history.back(); return; } stopReading(); at++; renderCard(); };
+
+/* ---------- arrow keys move the yellow focus ring to the nearest button in that direction; Enter presses it ---------- */
+document.addEventListener('keydown', e => {
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (!dir) return;
+  const scr = document.querySelector('.screen.active');
+  const btns = scr ? [...scr.querySelectorAll('button')].filter(b => !b.disabled && b.offsetParent !== null) : [];
+  if (!btns.length) return;
+  e.preventDefault();
+  const cur = btns.includes(document.activeElement) ? document.activeElement : null;
+  if (!cur) { btns[btns.length - 1].focus(); return; }
+  const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  // Prefer buttons inside a 45° cone in that direction (same row for left/right), nearest first.
+  const cand = btns.filter(b => b !== cur).map(b => {
+    const q = b.getBoundingClientRect(), dx = q.left + q.width / 2 - cx, dy = q.top + q.height / 2 - cy;
+    const along = dx * dir[0] + dy * dir[1], perp = Math.abs(dx * dir[1] + dy * dir[0]);
+    return { b, along, perp, score: along + 2 * perp };
+  }).filter(c => c.along > 1);
+  const pool = cand.some(c => c.perp <= c.along) ? cand.filter(c => c.perp <= c.along) : cand;
+  pool.sort((a, b) => a.score - b.score);
+  if (pool[0]) pool[0].b.focus();
+});
+$('bPrev').onclick = () => { if (saving) return; if (at > 0) { stopReading(); at--; renderCard(); } };
 
 /* ---------- read aloud (the glasses have one built-in voice) ---------- */
 let reading = false;
@@ -293,6 +402,7 @@ async function load() {
     brief = Object.assign({}, saved, { offline: true });
   }
   brief.parsed = parseBrief(brief.full_text || brief.news_summary || '');
+  addPicks(brief.parsed, brief.picks);
   buildDeck();
   renderHome(); show('home', 'bStart');
 }
@@ -310,6 +420,13 @@ const TOOLS = [
     execute: async ({ section }) => { const si = findSection(section); if (si < 0) return reply('That section is not in today\'s brief.'); openAt(deck.findIndex(c => c.si === si)); return reply(`Showing ${brief.parsed.sections[si].name}.`); } },
   { name: 'next_story', description: 'Go to the next card of the morning brief.', inputSchema: { type: 'object', properties: {} },
     execute: async () => { if (!brief) return reply('Not loaded.'); stopReading(); openAt(at + 1); return reply('Next.'); } },
+  { name: 'rate_pick', description: "Rate one of today's Daily Picks (food, activity or exercise) as Done, Skipped or Loved it. Saves it to the Feedback tab.",
+    inputSchema: { type: 'object', properties: { category: { type: 'string', enum: ['food', 'activity', 'exercise'] }, reaction: { type: 'string', enum: ['Done', 'Skipped', 'Loved it'] } }, required: ['category', 'reaction'] },
+    execute: async ({ category, reaction }) => {
+      const i = deck.findIndex(c => c.it && c.it.kind === 'pick' && c.it.cat === String(category).toLowerCase());
+      if (i < 0) return reply("Today's picks are not ready yet.");
+      openAt(i); const ok = await ratePick(deck[i].it, reaction);
+      return reply(ok ? `Saved: ${deck[i].it.label} ${reaction}.` : 'That did not save. Try again.'); } },
   { name: 'stop_reading', description: 'Stop reading the brief aloud.', inputSchema: { type: 'object', properties: {} },
     execute: async () => { stopReading(); return reply('Stopped.'); } },
   { name: 'get_brief_summary', description: 'Get the short spoken summary of today\'s morning brief (news and stocks) to answer questions about it.', inputSchema: { type: 'object', properties: {} },

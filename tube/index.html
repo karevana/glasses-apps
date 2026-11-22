@@ -427,6 +427,19 @@ const TOOLS = [
 /* ---------- start ---------- */
 history.replaceState({ screen: 'home' }, '');
 renderHome();
+
+// Direct play: ?v=<YouTube id or link>&title=<text> (used by the Morning Brief's Video card).
+// Starts playing right away; Back goes to Tube's home, Back again returns to the app that opened it.
+(function directPlay() {
+  const q = new URLSearchParams(location.search);
+  const raw = q.get('v') || q.get('url') || '';
+  const m = raw.match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([A-Za-z0-9_-]{11})/);
+  const id = m ? m[1] : (/^[A-Za-z0-9_-]{11}$/.test(raw) ? raw : '');
+  if (!id) return;
+  history.replaceState({ screen: 'home' }, '', location.pathname);   // a reload won't replay it
+  state.results = [{ id, title: q.get('title') || 'Video', channel: '', duration: '' }];
+  playIndex(0).catch(e => playerMsg(e.message));
+})();
 </script>
 </body>
 </html>
