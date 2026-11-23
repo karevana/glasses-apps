@@ -247,6 +247,7 @@ function show(id, focusId) {
 }
 window.addEventListener('popstate', () => { stopReading(); renderHome(); show('home', 'bStart'); });
 
+function reload() { $('home').innerHTML = `<div class="msg"><div class="spin"></div>Getting today's brief…</div>`; load(); }
 function renderHome() {
   if (!brief) return;
   const p = brief.parsed;
@@ -257,16 +258,17 @@ function renderHome() {
   $('home').innerHTML = `
     <div class="kicker">Morning brief${dateLine ? ' · ' + esc(dateLine) : ''}</div>
     <div class="day">${esc(day)}</div>
-    ${stale ? `<div class="stale">Today's brief isn't in yet. This is the latest one.</div>` : ''}
-    ${brief.offline ? `<div class="stale">Offline: showing the saved copy.</div>` : ''}
+    ${brief.offline ? `<div class="stale">Couldn't reach the brief (${esc(brief.why || 'no connection')}). Showing the saved copy.</div>` : stale ? `<div class="stale">Today's brief isn't in yet. This is the latest one.</div>` : ''}
     <div class="hello">${esc(p.greeting).slice(0, 160)}</div>
     <div class="row2">
       <button class="go" id="bStart">Start ▶</button>
       <button id="bListen">🔊 Read to me</button>
     </div>
+    ${stale || brief.offline ? `<button id="bRefresh">↻ Refresh</button>` : ''}
     ${p.sections[0] && p.sections[0].items.find(i => i.kind === 'story') ? `<div class="top"><small>Top story</small><div>${esc(p.sections[0].items.find(i => i.kind === 'story').head)}</div></div>` : ''}
     <div class="sections">${p.sections.map((s, i) => `<button data-s="${i}">${esc(s.name)}<span>${s.items.length}</span></button>`).join('')}</div>`;
   $('bStart').onclick = () => openAt(0);
+  if ($('bRefresh')) $('bRefresh').onclick = reload;
   $('bListen').onclick = () => { openAt(0); startReading(); };
   $('home').querySelectorAll('.sections button').forEach(b => b.onclick = () => openAt(deck.findIndex(c => c.si === +b.dataset.s)));
 }
@@ -390,16 +392,26 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) stopR
 /* ---------- load ---------- */
 async function load() {
   if (!KEY()) { $('home').innerHTML = `<div class="msg">This copy has no key.<br>Add the app on the glasses using the full address that ends in ?k=…</div>`; return; }
+  // Fetch today's brief. The ?t= stamp stops the glasses' web view from handing back yesterday's cached answer.
+  // One retry with a longer wait, because the first request of the morning can be slow.
+  const get = async ms => {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const r = await fetch(`${API}?k=${encodeURIComponent(KEY())}&t=${Date.now()}`, { cache: 'no-store', signal: ctrl.signal });
+      const d = await r.json().catch(() => ({ ok: false, error: `The server answered ${r.status}.` }));
+      if (!d.ok) { const e = new Error(d.error || 'No brief came back.'); e.fatal = r.status === 403; throw e; }
+      return d;
+    } catch (e) { if (e.name === 'AbortError') throw new Error('The brief took too long to arrive.'); throw e; }
+    finally { clearTimeout(t); }
+  };
   try {
-    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 10000);
-    const d = await fetch(`${API}?k=${encodeURIComponent(KEY())}`, { cache: 'no-store', signal: ctrl.signal }).then(r => r.json());
-    clearTimeout(t);
-    if (!d.ok) throw new Error(d.error || 'No brief came back.');
+    let d;
+    try { d = await get(12000); } catch (e) { if (e.fatal) throw e; d = await get(25000); }
     brief = d; store.set('brief.last', d);
   } catch (e) {
     const saved = store.get('brief.last', null);
-    if (!saved) { $('home').innerHTML = `<div class="msg">Couldn't get the brief.<br>${esc(e.message)}</div>`; return; }
-    brief = Object.assign({}, saved, { offline: true });
+    if (!saved || e.fatal) { $('home').innerHTML = `<div class="msg">Couldn't get the brief.<br>${esc(e.message)}</div><button class="go" id="bRetry" style="margin-top:calc(var(--u)*4)">↻ Try again</button>`; $('bRetry').onclick = reload; $('bRetry').focus(); return; }
+    brief = Object.assign({}, saved, { offline: true, why: e.message });
   }
   brief.parsed = parseBrief(brief.full_text || brief.news_summary || '');
   addPicks(brief.parsed, brief.picks);
