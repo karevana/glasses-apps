@@ -73,6 +73,8 @@
   .react[hidden] { display: none; }
   .react button { font-size: calc(var(--u) * 4); padding: calc(var(--u) * 2) calc(var(--u) * 1); }
   .react button.watch { grid-column: 1 / -1; background: #2b2108; border-color: var(--accent); }
+  .react.two { grid-template-columns: 1.4fr 1fr; }
+  .react.two button.watch { grid-column: auto; }
   .saved { text-align: center; }
   .saved .tick { font-size: calc(var(--u) * 16); line-height: 1; color: var(--up); }
   .saved .what { font-size: calc(var(--u) * 6); font-weight: 800; margin-top: calc(var(--u) * 2); }
@@ -103,6 +105,7 @@
 const API = 'https://n8n.rainandwind.ca/webhook/glasses-brief';
 const FEEDBACK_API = 'https://n8n.rainandwind.ca/webhook/glasses-brief-feedback';
 const TUBE = '../tube/';
+const MUSIC_API = 'https://n8n.rainandwind.ca/webhook/glasses-music-done';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -221,6 +224,44 @@ function openVideo(it) {
   else if (/^https?:\/\//.test(it.link)) location.href = it.link;
 }
 
+/* ---------- Evening Music: newest Muse Test Log > Music Picks row (Sally adds one ~6 PM), shown after all other sections ---------- */
+// Flexible nights, no streaks: each habit is an option, Done just logs it to Music Log.
+const MUSIC_NOT_READY = "Tonight's music picks aren't ready yet — they arrive around 6 PM.";
+function addMusic(p, m) {
+  const items = [];
+  if (m && m.is_today && m.week_of === todayISO()) {
+    if (m.guitar_song) items.push({ kind: 'music', act: 'guitar', label: 'Guitar', title: m.guitar_song,
+      by: m.guitar_artist, note: m.why_it_fits, link: m.guitar_video,
+      pick: m.guitar_song, date: m.week_of });   // pick = the cell text exactly, so Sally can match it
+    if (m.sax_lesson) items.push({ kind: 'music', act: 'sax', label: 'Sax', title: m.sax_lesson, link: m.sax_video, pick: m.sax_lesson, date: m.week_of });
+    if (m.cymatics_frequency) items.push({ kind: 'music', act: 'cymatics', label: 'Cymatics', title: m.cymatics_frequency, link: m.cymatics_video, pick: m.cymatics_frequency, date: m.week_of });
+  }
+  if (!items.length) items.push({ kind: 'para', text: MUSIC_NOT_READY });
+  p.sections.push({ name: 'Evening Music', sub: '', items });
+}
+const doneKey = it => `${it.date}|${it.act}`;
+const musicDone = store.get('brief.musicDone', {});
+async function markMusicDone(it) {
+  if (saving) return;
+  saving = true; stopReading();
+  $('react').hidden = true;
+  $('body').innerHTML = `<div class="saved"><div class="spin"></div><div class="sub">Saving…</div></div>`;
+  let ok = false, msg = '';
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 10000);
+    const res = await fetch(MUSIC_API, { method: 'POST', signal: ctrl.signal,
+      body: new URLSearchParams({ k: KEY(), activity: it.act, pick: it.pick, video: it.link || '' }) });
+    clearTimeout(t);
+    const d = await res.json(); ok = !!d.ok; msg = d.error || '';
+  } catch (e) { msg = e.name === 'AbortError' ? 'That took too long.' : 'No connection.'; }
+  if (ok) { musicDone[doneKey(it)] = 1; store.set('brief.musicDone', musicDone); }
+  $('body').innerHTML = ok
+    ? `<div class="saved"><div class="tick">✓</div><div class="what">Saved</div><div class="sub">${esc(it.label)}: done</div></div>`
+    : `<div class="saved err"><div class="tick">!</div><div class="what">Not saved</div><div class="sub">${esc(msg || 'Try again.')}</div></div>`;
+  setTimeout(() => { saving = false; if (ok && at < deck.length - 1) at++; renderCard(); $('bNext').focus(); }, ok ? 1200 : 2200);
+  return ok;
+}
+
 /* ---------- build the deck ---------- */
 let brief = null, deck = [], at = 0;
 function buildDeck() {
@@ -236,6 +277,7 @@ function cardSpeech(c) {
   if (it.kind === 'list') return intro + it.rows.map(r => `${r.head} ${r.detail}`).join('. ');
   if (it.kind === 'pick') return intro + it.label + '. ' + it.text;
   if (it.kind === 'video') return intro + 'Video. ' + it.title;
+  if (it.kind === 'music') return intro + it.label + '. ' + it.title + (it.by ? ', by ' + it.by : '') + (it.note ? '. ' + it.note : '');
   return intro + it.head + '. ' + it.detail;
 }
 const spoken = s => s.replace(/\bC\$/g, 'Canadian $').replace(/—/g, ', ').replace(/\s+/g, ' ');
@@ -276,7 +318,7 @@ function openAt(i) {
   if (!document.getElementById('card').classList.contains('active')) history.pushState({ screen: 'card' }, '');
   at = Math.max(0, Math.min(deck.length - 1, i));
   renderCard();
-  show('card', 'bNext');
+  show('card', $('bWatch') ? 'bWatch' : 'bNext');   // video and music cards: Enter plays
 }
 
 /* ---------- one card ---------- */
@@ -284,7 +326,7 @@ function renderCard() {
   const c = deck[at];
   const body = $('body');
   const react = $('react');
-  react.hidden = true; react.innerHTML = '';
+  react.hidden = true; react.innerHTML = ''; react.className = 'react';
   if (c.end) {
     $('secName').innerHTML = 'Done';
     $('count').textContent = '';
@@ -310,6 +352,18 @@ function renderCard() {
     else if (it.kind === 'video') {
       body.innerHTML = `<div class="pcat">Video</div><div class="head">${esc(it.title)}</div>${it.link ? '' : `<div class="detail">No link for this one today.</div>`}`;
       if (it.link) { react.innerHTML = `<button class="watch" id="bWatch">▶ Watch in Tube</button>`; react.hidden = false; $('bWatch').onclick = () => openVideo(it); }
+    }
+    else if (it.kind === 'music') {
+      const done = musicDone[doneKey(it)];
+      body.innerHTML = `<div class="pcat">${esc(it.label)}${done ? ` <small style="color:var(--up);letter-spacing:0;text-transform:none">· done tonight</small>` : ''}</div>`
+        + `<div class="head">${esc(it.title)}</div>`
+        + (it.by ? `<div class="detail">by ${esc(it.by)}</div>` : '')
+        + (it.note ? `<div class="detail">${esc(it.note)}</div>` : '');
+      react.className = 'react two';
+      react.innerHTML = (it.link ? `<button class="watch" id="bWatch">▶ Play</button>` : '') + `<button id="bDone">✓ Done</button>`;
+      react.hidden = false;
+      if (it.link) $('bWatch').onclick = () => openVideo(it);
+      $('bDone').onclick = () => markMusicDone(it);
     }
     else body.innerHTML = `<div class="head">${esc(it.head)}</div>${it.detail ? `<div class="detail">${inline(it.detail)}</div>` : ''}`;
     const nxt = deck[at + 1];
@@ -352,7 +406,7 @@ document.addEventListener('keydown', e => {
   const cand = btns.filter(b => b !== cur).map(b => {
     const q = b.getBoundingClientRect(), dx = q.left + q.width / 2 - cx, dy = q.top + q.height / 2 - cy;
     const along = dx * dir[0] + dy * dir[1], perp = Math.abs(dx * dir[1] + dy * dir[0]);
-    return { b, along, perp, score: along + 2 * perp };
+    return { b, along, perp, score: along + 4 * perp };   // strongly prefer the same row / column
   }).filter(c => c.along > 1);
   const pool = cand.some(c => c.perp <= c.along) ? cand.filter(c => c.perp <= c.along) : cand;
   pool.sort((a, b) => a.score - b.score);
@@ -415,6 +469,7 @@ async function load() {
   }
   brief.parsed = parseBrief(brief.full_text || brief.news_summary || '');
   addPicks(brief.parsed, brief.picks);
+  addMusic(brief.parsed, brief.music);
   buildDeck();
   renderHome(); show('home', 'bStart');
 }
@@ -432,6 +487,13 @@ const TOOLS = [
     execute: async ({ section }) => { const si = findSection(section); if (si < 0) return reply('That section is not in today\'s brief.'); openAt(deck.findIndex(c => c.si === si)); return reply(`Showing ${brief.parsed.sections[si].name}.`); } },
   { name: 'next_story', description: 'Go to the next card of the morning brief.', inputSchema: { type: 'object', properties: {} },
     execute: async () => { if (!brief) return reply('Not loaded.'); stopReading(); openAt(at + 1); return reply('Next.'); } },
+  { name: 'music_done', description: "Mark one of tonight's Evening Music picks (guitar, sax or cymatics) as done. Logs it to the Music Log tab.",
+    inputSchema: { type: 'object', properties: { activity: { type: 'string', enum: ['guitar', 'sax', 'cymatics'] } }, required: ['activity'] },
+    execute: async ({ activity }) => {
+      const i = deck.findIndex(c => c.it && c.it.kind === 'music' && c.it.act === String(activity).toLowerCase());
+      if (i < 0) return reply(MUSIC_NOT_READY);
+      openAt(i); const ok = await markMusicDone(deck[i].it);
+      return reply(ok ? `Saved: ${deck[i].it.label} done.` : 'That did not save. Try again.'); } },
   { name: 'rate_pick', description: "Rate one of today's Daily Picks (food, activity or exercise) as Done, Skipped or Loved it. Saves it to the Feedback tab.",
     inputSchema: { type: 'object', properties: { category: { type: 'string', enum: ['food', 'activity', 'exercise'] }, reaction: { type: 'string', enum: ['Done', 'Skipped', 'Loved it'] } }, required: ['category', 'reaction'] },
     execute: async ({ category, reaction }) => {
