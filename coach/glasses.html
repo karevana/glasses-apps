@@ -111,9 +111,10 @@
 
 <!-- LOG (Do) -->
 <section class="screen" id="log">
-  <div class="label">What did you eat?</div>
+  <div class="label" id="logLbl">What did you eat?</div>
   <input id="words" type="text" maxlength="1000" placeholder="Pinch, then say it" autocomplete="off">
   <div class="chips" id="chips"></div>
+  <div class="label err hidden" id="logHint"></div>
   <div class="row2">
     <button id="bLogBack">Back</button>
     <button class="go" id="bLogIt">Log it</button>
@@ -183,9 +184,14 @@ function setDay(d) {
 
 async function call(path, data) {
   if (!KEY()) throw new Error('Open this app once from your private address (with ?k=).');
-  const r = data
-    ? await fetch(API + path, { method: 'POST', body: new URLSearchParams(Object.assign({ k: KEY() }, data)) })
-    : await fetch(`${API}${path}?k=${encodeURIComponent(KEY())}&date=${viewDate}`, { cache: 'no-store' });
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 45000);
+  let r;
+  try {
+    r = data
+      ? await fetch(API + path, { method: 'POST', body: new URLSearchParams(Object.assign({ k: KEY() }, data)), signal: ctrl.signal })
+      : await fetch(`${API}${path}?k=${encodeURIComponent(KEY())}&date=${viewDate}&t=${Date.now()}`, { cache: 'no-store', signal: ctrl.signal });
+  } catch (e) { throw new Error(e.name === 'AbortError' ? 'That took too long. Nothing was saved, so try again.' : 'No connection. Nothing was saved, so try again.'); }
+  finally { clearTimeout(timer); }
   const d = await r.json().catch(() => ({}));
   if (!r.ok || !d.ok) throw new Error(d.error || 'Something went wrong. Try again.');
   return d;
@@ -271,11 +277,26 @@ function renderChips() {
   $('chips').innerHTML = MEALS.map(m => `<button class="${m === meal ? 'on' : ''}" data-m="${m}" id="chip${m}">${m}</button>`).join('');
   $('chips').querySelectorAll('button').forEach(b => b.onclick = () => { meal = b.dataset.m; renderChips(); $('bLogIt').focus(); });
 }
-$('bLog').onclick = () => { meal = guessMeal(); renderChips(); $('words').value = ''; go('log', 'words'); };
+function openLog() {
+  meal = isToday() ? guessMeal() : 'Dinner'; renderChips(); $('words').value = ''; $('logHint').classList.add('hidden');
+  // Always say which day this meal goes to, so a back-dated meal is never a surprise.
+  $('logLbl').innerHTML = isToday() ? 'What did you eat?' : `What did you eat? <b style="color:var(--accent)">· for ${esc(dayShort(viewDate))}</b>`;
+  go('log', 'words');
+}
+$('bLog').onclick = openLog;
 $('bLogBack').onclick = () => history.back();
 $('words').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('bLogIt').click(); } });
 $('words').addEventListener('change', () => { if ($('words').value.trim()) $('bLogIt').focus(); });
-$('bLogIt').onclick = () => { const t = $('words').value.trim(); if (!t) { $('words').focus(); return; } logMeal(t, meal); };
+$('bLogIt').onclick = () => {
+  const t = $('words').value.trim();
+  if (!t) {   // nothing in the box yet (e.g. dictation not finished): say so instead of doing nothing
+    $('logHint').textContent = 'Nothing to log yet. Pinch the box, say the meal, then press Log it.';
+    $('logHint').classList.remove('hidden'); $('words').focus(); return;
+  }
+  $('logHint').classList.add('hidden');
+  logMeal(t, meal);
+};
+$('words').addEventListener('input', () => $('logHint').classList.add('hidden'));
 
 async function logMeal(text, mealName) {
   go('work'); $('workMsg').textContent = 'Estimating… about 5 seconds';
@@ -289,7 +310,7 @@ async function logMeal(text, mealName) {
       `<div class="desc">${esc(m.description)}</div>
        <div class="nums">Protein <b>${m.protein_g} g</b> · Fibre <b>${m.fibre_g} g</b> · Fruit/veg <b>${m.fruit_veg_servings}</b> · ~<b>${m.calories}</b> kcal</div>
        ${vs.length ? '<div class="vs"><div><b>' + (isToday() ? 'Today so far' : esc(dayShort(viewDate))) + '</b><span>vs plan</span></div>' + vs.map(v => `<div><b>${esc(v.label)}</b><span>${v.actual} of ${v.plan}</span></div>`).join('') + '</div>' : ''}`,
-      [['Log another', () => { $('words').value = ''; meal = guessMeal(); renderChips(); history.back(); }], ['Done', home, true]]);
+      [['Log another', () => { $('words').value = ''; $('logHint').classList.add('hidden'); meal = isToday() ? guessMeal() : 'Dinner'; renderChips(); history.back(); }], ['Done', home, true]]);
     loadToday();
     return { meal: m, check: c };
   } catch (err) {
