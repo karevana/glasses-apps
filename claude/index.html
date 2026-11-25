@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Ask Claude from Meta Ray-Ban Display: say a question, read or hear a short answer, ask follow-ups.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>Claude</title>
+<style>
+  /* Claude on the glasses.
+     Additive display: black = see-through, so bright text on black. 600x600.
+     Questions go to the n8n webhook "glasses-claude" (Claude Sonnet 5.5); the key and the
+     conversation stay on the glasses (localStorage). Nothing is saved to a sheet. */
+  :root {
+    --accent: #ff9a6b;   /* Claude orange, lifted for the see-through display */
+    --text: #ffffff;
+    --dim: #a9b2b8;
+    --focus: #ffd84a;    /* yellow focus ring for the D-pad */
+    --u: min(1vw, 1vh);  /* 600x600 => 6px */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; padding: calc(var(--u) * 3.5); gap: calc(var(--u) * 2.2); }
+  .screen.active { display: flex; }
+  button, input { font: inherit; color: inherit; }
+  button { background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.5); cursor: pointer;
+    padding: calc(var(--u) * 2.4) calc(var(--u) * 1.5); font-size: calc(var(--u) * 4.6); font-weight: 700; }
+  button.go { background: #2e160b; border-color: var(--accent); }
+  button:disabled { opacity: .3; }
+  button:focus, input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u) * .6) var(--focus); }
+  .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .brand { font-size: calc(var(--u) * 6); font-weight: 800; margin: 0; color: var(--accent); }
+  .sub { color: var(--dim); font-size: calc(var(--u) * 3.8); }
+  .row { display: grid; grid-template-columns: 1.4fr 1fr; gap: calc(var(--u) * 1.8); }
+  .row3 { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: calc(var(--u) * 1.8); }
+  .bottom { margin-top: auto; }
+  .label { color: var(--dim); font-size: calc(var(--u) * 4.2); }
+  #q { width: 100%; background: #0d0d0d; border: calc(var(--u) * .5) solid #444; border-radius: calc(var(--u) * 2.5);
+    padding: calc(var(--u) * 3); font-size: calc(var(--u) * 5.2); }
+  #q::placeholder { color: #7d8a90; }
+  .hint { color: #ffb48f; font-size: calc(var(--u) * 3.8); }
+  .last { color: var(--dim); font-size: calc(var(--u) * 3.8); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .last b { color: var(--text); font-weight: 600; }
+  .hidden { display: none !important; }
+  .msg { color: var(--dim); font-size: calc(var(--u) * 4.6); text-align: center; margin: auto 0; line-height: 1.4; }
+  .spin { width: calc(var(--u) * 10); height: calc(var(--u) * 10); margin: 0 auto calc(var(--u) * 3); border-radius: 50%;
+    border: calc(var(--u) * 1.2) solid #2a2a2a; border-top-color: var(--accent); animation: sp 1s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+
+  /* answer */
+  .asked { color: var(--dim); font-size: calc(var(--u) * 3.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ans { flex: 1; min-height: 0; overflow-y: auto; font-size: calc(var(--u) * 5); line-height: 1.38; scrollbar-width: none; }
+  .ans::-webkit-scrollbar { display: none; }
+  .ans p { margin: 0 0 calc(var(--u) * 2.2); }
+  .ans ul, .ans ol { margin: 0 0 calc(var(--u) * 2.2); padding-left: calc(var(--u) * 6); }
+  .ans li { margin-bottom: calc(var(--u) * 1.4); }
+  .ans b { color: var(--accent); }
+  .ans.err { color: #ffb4b4; }
+</style>
+</head>
+<body>
+
+<!-- ASK: pinch the box and say the question; Enter or "Ask" sends it -->
+<section class="screen active" id="ask">
+  <div class="top"><h1 class="brand">Claude</h1><div class="sub" id="turns"></div></div>
+  <div class="label">Ask anything</div>
+  <input id="q" type="text" placeholder="Pinch here, then say it" autocomplete="off" enterkeyhint="send">
+  <div class="hint hidden" id="hint"></div>
+  <div class="last hidden" id="last"></div>
+  <div class="bottom">
+    <div class="row3">
+      <button class="go" id="bAsk">Ask ▶</button>
+      <button id="bLast">Last</button>
+      <button id="bNew">New chat</button>
+    </div>
+  </div>
+</section>
+
+<!-- WORK -->
+<section class="screen" id="work">
+  <div class="msg"><div class="spin"></div>Thinking…</div>
+</section>
+
+<!-- ANSWER -->
+<section class="screen" id="answer">
+  <div class="asked" id="asked"></div>
+  <div class="ans" id="ans"></div>
+  <div class="row3">
+    <button class="go" id="bMore">Ask more</button>
+    <button id="bRead">🔊 Read</button>
+    <button id="bScroll">More ▾</button>
+  </div>
+</section>
+
+<script>
+/* ---------- setup ---------- */
+const API = 'https://n8n.rainandwind.ca/webhook/glasses-claude';
+const $ = id => document.getElementById(id);
+const store = {
+  get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+// Key: from ?k= on first open, then remembered (never in the repo).
+(() => { const k = new URLSearchParams(location.search).get('k'); if (k) store.set('claude.key', k); })();
+const KEY = () => store.get('claude.key', '');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ---------- conversation: last 6 turns, kept on the glasses; a fresh chat after 6 hours idle ---------- */
+const IDLE_MS = 6 * 60 * 60 * 1000;
+let chat = store.get('claude.chat', []);
+if (!Array.isArray(chat) || (chat.length && Date.now() - (chat[chat.length - 1].t || 0) > IDLE_MS)) chat = [];
+const saveChat = () => store.set('claude.chat', chat.slice(-6));
+let current = null;   // the turn on the Answer screen
+
+/* ---------- screens + Back ---------- */
+let screen = 'ask';
+function show(id, focusId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  screen = id;
+  if (focusId) setTimeout(() => { const el = $(focusId); if (el && !el.disabled) el.focus(); }, 0);
+}
+function go(id, focusId) { history.pushState({ screen: id }, ''); show(id, focusId); }
+window.addEventListener('popstate', e => {
+  stopReading();
+  const s = (e.state && e.state.screen) || 'ask';
+  if (s === 'answer' && current) { renderAnswer(current); show('answer', 'bMore'); }
+  else { renderAsk(); show('ask', 'q'); }
+});
+
+/* ---------- ask screen ---------- */
+function renderAsk() {
+  const n = chat.length;
+  $('turns').textContent = n ? `${n} in this chat` : 'New chat';
+  $('bLast').disabled = !n;
+  $('bNew').disabled = !n;
+  const t = chat[n - 1];
+  $('last').classList.toggle('hidden', !t);
+  if (t) $('last').innerHTML = `<b>Last:</b> ${esc(t.q)}`;
+  $('hint').classList.add('hidden');
+}
+async function ask(text) {
+  const q = String(text || '').trim();
+  if (!q) {   // nothing in the box yet (e.g. dictation not finished): say so instead of doing nothing
+    $('hint').textContent = 'Nothing to ask yet. Pinch the box, say your question, then press Ask.';
+    $('hint').classList.remove('hidden'); $('q').focus(); return null;
+  }
+  if (!KEY()) { current = { q, a: 'This copy has no key. Add the app on the glasses using the full address that ends in ?k=…', err: true }; go('answer', 'bMore'); renderAnswer(current); return null; }
+  stopReading();
+  go('work');
+  let turn;
+  try {
+    const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 60000);
+    const res = await fetch(API, { method: 'POST', signal: ctrl.signal,
+      body: new URLSearchParams({ k: KEY(), q, history: JSON.stringify(chat.slice(-6).map(t => ({ q: t.q, a: t.a }))) }) });
+    clearTimeout(timer);
+    const d = await res.json().catch(() => ({ ok: false, error: `The server answered ${res.status}.` }));
+    if (!d.ok) throw new Error(d.error || 'No answer came back.');
+    turn = { q, a: d.answer, t: Date.now() };
+    chat.push(turn); chat = chat.slice(-6); saveChat();
+  } catch (e) {
+    turn = { q, a: (e.name === 'AbortError' ? 'That took too long.' : e.message === 'Failed to fetch' ? 'No connection.' : e.message) + ' Press Ask more to try again.', err: true };
+  }
+  current = turn;
+  $('q').value = '';
+  history.replaceState({ screen: 'answer' }, '');
+  renderAnswer(turn); show('answer', 'bMore');
+  return turn;
+}
+
+/* ---------- answer screen: light markdown (paragraphs, "- " bullets, "1." lists, **bold**) ---------- */
+function md(text) {
+  const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1$2');
+  const out = []; let list = null;
+  const close = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${inline(i)}</li>`).join('')}</${list.tag}>`); list = null; } };
+  for (const raw of String(text || '').split(/\n/)) {
+    const line = raw.trim().replace(/^#{1,6}\s+/, '');
+    const ul = line.match(/^[-•*]\s+(.*)/), ol = line.match(/^\d+[.)]\s+(.*)/);
+    if (ul || ol) { const tag = ul ? 'ul' : 'ol'; if (!list || list.tag !== tag) { close(); list = { tag, items: [] }; } list.items.push((ul || ol)[1]); continue; }
+    close();
+    if (line) out.push(`<p>${inline(line)}</p>`);
+  }
+  close();
+  return out.join('');
+}
+const plain = text => String(text || '').replace(/\*\*/g, '').replace(/^[-•*]\s+/gm, '').replace(/^#{1,6}\s+/gm, '');
+function renderAnswer(t) {
+  $('asked').textContent = t.q;
+  const a = $('ans');
+  a.classList.toggle('err', !!t.err);
+  a.innerHTML = md(t.a);
+  a.scrollTop = 0;
+  $('bMore').textContent = t.err ? 'Try again' : 'Ask more';
+  setTimeout(updateScroll, 0);
+}
+function updateScroll() {
+  const a = $('ans'), more = a.scrollHeight > a.clientHeight + 4;
+  $('bScroll').disabled = !more;
+  $('bScroll').textContent = more && a.scrollTop + a.clientHeight >= a.scrollHeight - 4 ? 'Top ▴' : 'More ▾';
+}
+$('ans').addEventListener('scroll', updateScroll);
+$('bScroll').onclick = () => {
+  const a = $('ans');
+  if (a.scrollTop + a.clientHeight >= a.scrollHeight - 4) a.scrollTop = 0;
+  else a.scrollTop += a.clientHeight * 0.8;
+  updateScroll();
+};
+
+/* ---------- read aloud (the glasses' built-in voice) ---------- */
+let reading = false;
+function stopReading() { reading = false; try { speechSynthesis.cancel(); } catch (e) {} $('bRead').textContent = '🔊 Read'; }
+$('bRead').onclick = () => {
+  if (reading) { stopReading(); return; }
+  if (!current || !('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(plain(current.a));
+  u.lang = 'en-US';
+  u.onend = u.onerror = () => stopReading();
+  reading = true; $('bRead').textContent = '■ Stop';
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+};
+
+/* ---------- buttons ---------- */
+$('bAsk').onclick = () => ask($('q').value);
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ask($('q').value); } });
+$('q').addEventListener('input', () => $('hint').classList.add('hidden'));
+$('q').addEventListener('change', () => { if ($('q').value.trim()) $('bAsk').focus(); });   // after dictation, the ring jumps to Ask
+$('bMore').onclick = () => {
+  stopReading();
+  if (current && current.err) { $('q').value = current.q; history.back(); setTimeout(() => $('bAsk').focus(), 50); return; }
+  history.back();
+};
+$('bLast').onclick = () => { if (!chat.length) return; current = chat[chat.length - 1]; renderAnswer(current); go('answer', 'bMore'); };
+$('bNew').onclick = () => { chat = []; saveChat(); current = null; renderAsk(); $('q').focus(); };
+
+/* ---------- arrow keys: move the yellow ring to the nearest button in that direction (Enter presses it) ---------- */
+document.addEventListener('keydown', e => {
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (!dir) return;
+  if (document.activeElement === $('q') && dir[1] === 0) return;   // left/right inside the text box moves the cursor
+  const scr = document.querySelector('.screen.active');
+  const els = scr ? [...scr.querySelectorAll('button, input')].filter(b => !b.disabled && b.offsetParent !== null) : [];
+  if (!els.length) return;
+  e.preventDefault();
+  const cur = els.includes(document.activeElement) ? document.activeElement : null;
+  if (!cur) { els[0].focus(); return; }
+  const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const cand = els.filter(b => b !== cur).map(b => {
+    const q = b.getBoundingClientRect(), dx = q.left + q.width / 2 - cx, dy = q.top + q.height / 2 - cy;
+    const along = dx * dir[0] + dy * dir[1], perp = Math.abs(dx * dir[1] + dy * dir[0]);
+    return { b, along, perp, score: along + 4 * perp };
+  }).filter(c => c.along > 1);
+  const pool = cand.some(c => c.perp <= c.along) ? cand.filter(c => c.perp <= c.along) : cand;
+  pool.sort((a, b) => a.score - b.score);
+  if (pool[0]) pool[0].b.focus();
+  else if (screen === 'answer' && dir[0] === 0) { $('ans').scrollTop += dir[1] * $('ans').clientHeight * 0.5; updateScroll(); }   // up/down past the buttons scrolls the answer
+});
+
+/* ---------- voice tools for Meta AI (WebMCP), where the glasses support them ---------- */
+(() => {
+  const mc = navigator.modelContext || (document.modelContext);
+  if (!mc || !mc.registerTool) return;
+  const reply = text => ({ content: [{ type: 'text', text }] });
+  const tools = [
+    { name: 'ask_claude', description: 'Ask Claude a question on the glasses and show the answer. Keeps the current chat so follow-ups work.',
+      inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
+      execute: async ({ question }) => { const t = await ask(question); return reply(t ? t.a : 'Say the question first.'); } },
+    { name: 'new_claude_chat', description: 'Start a new chat with Claude on the glasses (forget the current conversation).',
+      inputSchema: { type: 'object', properties: {} },
+      execute: async () => { chat = []; saveChat(); current = null; if (screen !== 'ask') history.back(); renderAsk(); return reply('New chat started.'); } },
+  ];
+  for (const t of tools) { try { mc.registerTool(t); } catch (e) {} }
+})();
+
+/* ---------- start ---------- */
+history.replaceState({ screen: 'ask' }, '');
+renderAsk();
+show('ask', 'q');
+</script>
+</body>
+</html>
