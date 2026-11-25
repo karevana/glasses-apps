@@ -35,6 +35,12 @@
   @keyframes s { to { transform: rotate(360deg); } }
 
   /* ---------- home ---------- */
+  /* day switcher on Home: ◀ earlier brief · ▶ later brief */
+  .dayrow { display: grid; grid-template-columns: calc(var(--u) * 12) 1fr calc(var(--u) * 12); gap: calc(var(--u) * 1.8); align-items: center; }
+  .dayrow button { padding: calc(var(--u) * 1.4) 0; font-size: calc(var(--u) * 4.2); }
+  .dayrow button:disabled { opacity: .25; }
+  .dayrow .mid { text-align: center; }
+  .past-note { color: var(--accent); font-size: calc(var(--u) * 3.6); }
   .kicker { color: var(--accent); font-size: calc(var(--u) * 3.8); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
   .day { font-size: calc(var(--u) * 8); font-weight: 800; line-height: 1.05; }
   .hello { color: var(--dim); font-size: calc(var(--u) * 4); line-height: 1.35; }
@@ -114,6 +120,12 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ==
 const KEY = () => store.get('brief.key', '');
 const pad = n => String(n).padStart(2, '0');
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+// Which brief is shown: '' = the newest (normal), or a YYYY-MM-DD picked with ◀ / ▶ on Home.
+let viewDate = '';
+const briefCache = {};   // day -> brief, so stepping back and forth is instant
+const isPast = () => !!(viewDate && viewDate !== todayISO());
+const shiftISO = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const dayName = s => s === todayISO() ? 'Today' : s === shiftISO(todayISO(), -1) ? 'Yesterday' : new Date(s + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long' });
 
 /* =====================================================================
    Turn Muse's markdown brief into cards.
@@ -179,7 +191,7 @@ const PICKS = [['food', 'Food'], ['activity', 'Activity'], ['exercise', 'Exercis
 const REACTIONS = [['Done', '✓ Done'], ['Skipped', '⏭ Skipped'], ['Loved it', '♥ Loved it']];
 function addPicks(p, picks) {
   const items = [];
-  if (picks && picks.date === todayISO()) {
+  if (picks && picks.date === (viewDate || todayISO())) {
     for (const [cat, label] of PICKS) {
       const text = String(picks[cat] || '').trim();
       if (text) items.push({ kind: 'pick', cat, label, text, forDate: picks.date });
@@ -187,7 +199,7 @@ function addPicks(p, picks) {
     const title = String(picks.video_title || '').trim(), link = String(picks.video_link || '').trim();
     if (title || link) items.push({ kind: 'video', title: title || "Today's video", link });
   }
-  if (!items.length) items.push({ kind: 'para', text: "Today's picks are not ready yet." });
+  if (!items.length) items.push({ kind: 'para', text: isPast() ? 'No picks were saved for that day.' : "Today's picks are not ready yet." });
   const bi = p.sections.findIndex(s => /^body\b/i.test(s.name));
   p.sections.splice(bi >= 0 ? bi + 1 : 0, 0, { name: 'Daily Picks', sub: '', items });
 }
@@ -229,14 +241,14 @@ function openVideo(it) {
 const MUSIC_NOT_READY = "Tonight's music picks aren't ready yet — they arrive around 6 PM.";
 function addMusic(p, m) {
   const items = [];
-  if (m && m.is_today && m.week_of === todayISO()) {
+  if (m && m.week_of === (viewDate || todayISO()) && (m.is_today || isPast())) {
     if (m.guitar_song) items.push({ kind: 'music', act: 'guitar', label: 'Guitar', title: m.guitar_song,
       by: m.guitar_artist, note: m.why_it_fits, link: m.guitar_video,
       pick: m.guitar_song, date: m.week_of });   // pick = the cell text exactly, so Sally can match it
     if (m.sax_lesson) items.push({ kind: 'music', act: 'sax', label: 'Sax', title: m.sax_lesson, link: m.sax_video, pick: m.sax_lesson, date: m.week_of });
     if (m.cymatics_frequency) items.push({ kind: 'music', act: 'cymatics', label: 'Cymatics', title: m.cymatics_frequency, link: m.cymatics_video, pick: m.cymatics_frequency, date: m.week_of });
   }
-  if (!items.length) items.push({ kind: 'para', text: MUSIC_NOT_READY });
+  if (!items.length) items.push({ kind: 'para', text: isPast() ? 'No music picks for that day.' : MUSIC_NOT_READY });
   p.sections.push({ name: 'Evening Music', sub: '', items });
 }
 const doneKey = it => `${it.date}|${it.act}`;
@@ -289,18 +301,26 @@ function show(id, focusId) {
 }
 window.addEventListener('popstate', () => { stopReading(); renderHome(); show('home', 'bStart'); });
 
-function reload() { $('home').innerHTML = `<div class="msg"><div class="spin"></div>Getting today's brief…</div>`; load(); }
+function reload() { delete briefCache[viewDate || 'latest']; $('home').innerHTML = `<div class="msg"><div class="spin"></div>Getting today's brief…</div>`; load(); }
 function renderHome() {
   if (!brief) return;
   const p = brief.parsed;
   const d = brief.date ? new Date(brief.date + 'T12:00:00') : null;
   const day = d ? d.toLocaleDateString(undefined, { weekday: 'long' }) : 'Morning brief';
-  const dateLine = d ? d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) : '';
-  const stale = brief.date && brief.date !== todayISO();
+  const dateLine = d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  const stale = !viewDate && brief.date && brief.date !== todayISO();
+  const ds = brief.dates || [];
+  const pos = ds.indexOf(brief.date);
+  const prevDay = pos > 0 ? ds[pos - 1] : '';
+  const nextDay = pos >= 0 && pos < ds.length - 1 ? ds[pos + 1] : '';
   $('home').innerHTML = `
-    <div class="kicker">Morning brief${dateLine ? ' · ' + esc(dateLine) : ''}</div>
-    <div class="day">${esc(day)}</div>
-    ${brief.offline ? `<div class="stale">Couldn't reach the brief (${esc(brief.why || 'no connection')}). Showing the saved copy.</div>` : stale ? `<div class="stale">Today's brief isn't in yet. This is the latest one.</div>` : ''}
+    <div class="dayrow">
+      <button id="bPrevBrief" aria-label="Earlier brief" ${prevDay && !brief.offline ? '' : 'disabled'}>◀</button>
+      <div class="mid"><div class="kicker">Morning brief${dateLine ? ' · ' + esc(dateLine) : ''}</div><div class="day">${esc(day)}</div></div>
+      <button id="bNextBrief" aria-label="Later brief" ${nextDay && !brief.offline ? '' : 'disabled'}>▶</button>
+    </div>
+    ${brief.offline ? `<div class="stale">Couldn't reach the brief (${esc(brief.why || 'no connection')}). Showing the saved copy.</div>` : stale ? `<div class="stale">Today's brief isn't in yet. This is the latest one.</div>`
+      : viewDate && brief.date !== todayISO() ? `<div class="past-note">${esc(dayName(brief.date))}'s brief · ▶ to go forward</div>` : ''}
     <div class="hello">${esc(p.greeting).slice(0, 160)}</div>
     <div class="row2">
       <button class="go" id="bStart">Start ▶</button>
@@ -310,6 +330,9 @@ function renderHome() {
     ${p.sections[0] && p.sections[0].items.find(i => i.kind === 'story') ? `<div class="top"><small>Top story</small><div>${esc(p.sections[0].items.find(i => i.kind === 'story').head)}</div></div>` : ''}
     <div class="sections">${p.sections.map((s, i) => `<button data-s="${i}">${esc(s.name)}<span>${s.items.length}</span></button>`).join('')}</div>`;
   $('bStart').onclick = () => openAt(0);
+  // ▶ onto the newest day goes back to the normal (newest) view, so today's live watch numbers and picks show.
+  if (prevDay) $('bPrevBrief').onclick = () => openDay(prevDay, 'bPrevBrief');
+  if (nextDay) $('bNextBrief').onclick = () => openDay(nextDay === ds[ds.length - 1] ? '' : nextDay, 'bNextBrief');
   if ($('bRefresh')) $('bRefresh').onclick = reload;
   $('bListen').onclick = () => { openAt(0); startReading(); };
   $('home').querySelectorAll('.sections button').forEach(b => b.onclick = () => openAt(deck.findIndex(c => c.si === +b.dataset.s)));
@@ -359,11 +382,13 @@ function renderCard() {
         + `<div class="head">${esc(it.title)}</div>`
         + (it.by ? `<div class="detail">by ${esc(it.by)}</div>` : '')
         + (it.note ? `<div class="detail">${esc(it.note)}</div>` : '');
-      react.className = 'react two';
-      react.innerHTML = (it.link ? `<button class="watch" id="bWatch">▶ Play</button>` : '') + `<button id="bDone">✓ Done</button>`;
-      react.hidden = false;
+      // Done only on tonight's picks: Music Log stamps today's date, so an older day is look-and-play only.
+      const canDone = it.date === todayISO();
+      react.className = canDone && it.link ? 'react two' : 'react';
+      react.innerHTML = (it.link ? `<button class="watch" id="bWatch">▶ Play</button>` : '') + (canDone ? `<button id="bDone">✓ Done</button>` : '');
+      react.hidden = !react.innerHTML;
       if (it.link) $('bWatch').onclick = () => openVideo(it);
-      $('bDone').onclick = () => markMusicDone(it);
+      if (canDone) $('bDone').onclick = () => markMusicDone(it);
     }
     else body.innerHTML = `<div class="head">${esc(it.head)}</div>${it.detail ? `<div class="detail">${inline(it.detail)}</div>` : ''}`;
     const nxt = deck[at + 1];
@@ -444,6 +469,25 @@ $('bRead').onclick = () => reading ? stopReading() : startReading();
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopReading(); });
 
 /* ---------- load ---------- */
+// Step to another day's brief from Home. '' = newest.
+async function openDay(day, focusId) {
+  stopReading();
+  viewDate = day;
+  if (briefCache[day || 'latest']) { useBrief(briefCache[day || 'latest']); show('home', focusId); fixFocus(focusId); return; }
+  $('home').innerHTML = `<div class="msg"><div class="spin"></div>Getting ${day ? esc(dayName(day).toLowerCase() === 'yesterday' ? "yesterday's" : dayName(day) + "'s") : "today's"} brief…</div>`;
+  await load();
+  fixFocus(focusId);
+}
+// Keep the yellow ring on ◀ / ▶ while stepping; if that end is now disabled, use the other arrow or Start.
+function fixFocus(id) { setTimeout(() => { const b = $(id); if (b && !b.disabled) b.focus(); else { const o = $(id === 'bPrevBrief' ? 'bNextBrief' : 'bPrevBrief'); (o && !o.disabled ? o : $('bStart')).focus(); } }, 0); }
+function useBrief(d) {
+  brief = Object.assign({}, d);
+  brief.parsed = parseBrief(brief.full_text || brief.news_summary || '');
+  addPicks(brief.parsed, brief.picks);
+  addMusic(brief.parsed, brief.music);
+  buildDeck();
+  renderHome();
+}
 async function load() {
   if (!KEY()) { $('home').innerHTML = `<div class="msg">This copy has no key.<br>Add the app on the glasses using the full address that ends in ?k=…</div>`; return; }
   // Fetch today's brief. The ?t= stamp stops the glasses' web view from handing back yesterday's cached answer.
@@ -451,7 +495,7 @@ async function load() {
   const get = async ms => {
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
     try {
-      const r = await fetch(`${API}?k=${encodeURIComponent(KEY())}&t=${Date.now()}`, { cache: 'no-store', signal: ctrl.signal });
+      const r = await fetch(`${API}?k=${encodeURIComponent(KEY())}${viewDate ? '&date=' + viewDate : ''}&t=${Date.now()}`, { cache: 'no-store', signal: ctrl.signal });
       const d = await r.json().catch(() => ({ ok: false, error: `The server answered ${r.status}.` }));
       if (!d.ok) { const e = new Error(d.error || 'No brief came back.'); e.fatal = r.status === 403; throw e; }
       return d;
@@ -461,23 +505,37 @@ async function load() {
   try {
     let d;
     try { d = await get(12000); } catch (e) { if (e.fatal) throw e; d = await get(25000); }
-    brief = d; store.set('brief.last', d);
+    briefCache[viewDate || 'latest'] = d;
+    if (!viewDate) store.set('brief.last', d);
+    brief = d;
   } catch (e) {
+    if (viewDate && !e.fatal) {   // an older day didn't load: say so and offer the way back
+      $('home').innerHTML = `<div class="msg">Couldn't get that day's brief.<br>${esc(e.message)}</div><button class="go" id="bRetry" style="margin-top:calc(var(--u)*4)">◀ Back to the latest</button>`;
+      $('bRetry').onclick = () => openDay('', 'bStart'); $('bRetry').focus(); return;
+    }
     const saved = store.get('brief.last', null);
     if (!saved || e.fatal) { $('home').innerHTML = `<div class="msg">Couldn't get the brief.<br>${esc(e.message)}</div><button class="go" id="bRetry" style="margin-top:calc(var(--u)*4)">↻ Try again</button>`; $('bRetry').onclick = reload; $('bRetry').focus(); return; }
     brief = Object.assign({}, saved, { offline: true, why: e.message });
   }
-  brief.parsed = parseBrief(brief.full_text || brief.news_summary || '');
-  addPicks(brief.parsed, brief.picks);
-  addMusic(brief.parsed, brief.music);
-  buildDeck();
-  renderHome(); show('home', 'bStart');
+  useBrief(brief); show('home', 'bStart');
 }
 
 /* ---------- voice tools for Meta AI (WebMCP) ---------- */
 const reply = text => ({ content: [{ type: 'text', text }] });
 const findSection = name => brief ? brief.parsed.sections.findIndex(s => s.name.toLowerCase().includes(String(name || '').toLowerCase().replace(/s$/, ''))) : -1;
 const TOOLS = [
+  { name: 'show_brief_day', description: "Show an earlier day's morning brief on the glasses, or go back to today's. Day: 'yesterday', 'today', a weekday name, or YYYY-MM-DD.",
+    inputSchema: { type: 'object', properties: { day: { type: 'string' } }, required: ['day'] },
+    execute: async ({ day }) => {
+      const t = String(day || '').trim().toLowerCase(); const ds = (brief && brief.dates) || [];
+      let want = t === '' || t === 'today' || t === 'latest' ? '' : t === 'yesterday' ? shiftISO(todayISO(), -1) : /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : '';
+      if (!want && t && !['today', 'latest'].includes(t)) { const names = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']; const i = names.findIndex(n => t.startsWith(n.slice(0, 3)));
+        if (i >= 0) for (let k = 1; k <= 7; k++) { const d = shiftISO(todayISO(), -k); if (new Date(d + 'T12:00:00').getDay() === i) { want = d; break; } } }
+      if (want && !ds.includes(want)) return reply('There is no brief saved for that day.');
+      if (want && want === ds[ds.length - 1]) want = '';
+      if (history.state && history.state.screen === 'card') history.back();
+      await openDay(want, 'bStart');
+      return reply(`Showing ${want ? dayName(want).toLowerCase() === 'yesterday' ? "yesterday's" : dayName(want) + "'s" : "the latest"} brief.`); } },
   { name: 'read_brief', description: 'Read the morning brief aloud on the glasses, card by card. Optional section: local news, events, national news or stocks.',
     inputSchema: { type: 'object', properties: { section: { type: 'string', description: 'Section to start from, e.g. "stocks"' } } },
     execute: async ({ section } = {}) => { if (!brief) return reply('The brief has not loaded yet.'); const si = section ? findSection(section) : 0;
