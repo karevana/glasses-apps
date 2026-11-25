@@ -41,6 +41,14 @@
   .err { color: #ff9a9a; }
   .hidden { display: none !important; }
   #bStack:not(.hidden) + .row { margin-top: 0; }
+  /* day switcher: ◀ / ▶ step through the last 14 days to fill in a missed day */
+  .daybar { display: grid; grid-template-columns: calc(var(--u) * 13) 1fr calc(var(--u) * 13); gap: calc(var(--u) * 1.8); align-items: center; }
+  .daybar button { padding: calc(var(--u) * 1.6) 0; font-size: calc(var(--u) * 4.4); }
+  .daybar button:disabled { opacity: .25; }
+  .dayname { text-align: center; line-height: 1.15; }
+  .dayname b { display: block; font-size: calc(var(--u) * 5); }
+  .dayname span { color: var(--dim); font-size: calc(var(--u) * 3.6); }
+  .daybar.past .dayname b { color: var(--accent); }
 
   /* today vs plan */
   #bars { display: flex; flex-direction: column; gap: calc(var(--u) * 2.2); margin-top: calc(var(--u) * 1); }
@@ -87,7 +95,11 @@
 
 <!-- TODAY (Check) -->
 <section class="screen active" id="today">
-  <div class="top"><h1 class="brand">Stronger <span>Humans</span></h1><div class="date" id="dateLbl"></div></div>
+  <div class="daybar" id="dayBar">
+    <button id="bPrevDay" aria-label="Earlier day">◀</button>
+    <div class="dayname" id="dateLbl"></div>
+    <button id="bNextDay" aria-label="Later day">▶</button>
+  </div>
   <div id="bars"><div class="msg"><div class="spin"></div>Loading today…</div></div>
   <button class="go hidden" id="bStack" style="margin-top:auto">☕ Morning stack</button>
   <div class="row">
@@ -130,13 +142,50 @@ const KEY = () => { try { return JSON.parse(localStorage.getItem('coach.key')) |
 const pad = n => String(n).padStart(2, '0');
 const localDate = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const localTime = (d = new Date()) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-$('dateLbl').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+/* ---------- which day we're logging for: today by default; ◀ goes back (up to 14 days) to fill in a missed day ---------- */
+const MAX_BACK = 14;
+let viewDate = localDate();
+const isToday = () => viewDate === localDate();
+const shiftDate = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return localDate(d); };
+const dayShort = s => new Date(s + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const dayWord = s => s === localDate() ? 'Today' : s === shiftDate(localDate(), -1) ? 'Yesterday' : dayShort(s);
+const daySpoken = () => isToday() ? 'today' : dayWord(viewDate) === 'Yesterday' ? 'yesterday' : 'on ' + dayShort(viewDate);
+// A past-day meal gets a typical time for its meal, so the day's list reads in order.
+const MEAL_TIME = { Breakfast: '08:00', Lunch: '12:30', Snack: '15:30', Dinner: '18:30' };
+const timeFor = m => isToday() ? localTime() : (MEAL_TIME[m] || '12:00');
+// "yesterday", "today", "2026-11-24" or "Monday" -> YYYY-MM-DD within the last 14 days (for the voice tools)
+function parseDay(v) {
+  const t = String(v || '').trim().toLowerCase();
+  if (!t || t === 'today') return localDate();
+  if (t === 'yesterday') return shiftDate(localDate(), -1);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const names = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const i = names.findIndex(n => t.startsWith(n.slice(0, 3)));
+  if (i >= 0) { for (let k = 1; k <= 7; k++) { const d = shiftDate(localDate(), -k); if (new Date(d + 'T12:00:00').getDay() === i) return d; } }
+  return null;
+}
+function renderDayBar() {
+  const today = isToday();
+  $('dayBar').classList.toggle('past', !today);
+  $('dateLbl').innerHTML = today ? `<b>Today</b><span>${esc(dayShort(viewDate))}</span>`
+    : `<b>${esc(dayWord(viewDate))}</b><span>${dayWord(viewDate) === 'Yesterday' ? esc(dayShort(viewDate)) + ' · ' : ''}logging for this day</span>`;
+  $('bPrevDay').disabled = viewDate <= shiftDate(localDate(), -MAX_BACK);
+  $('bNextDay').disabled = today;
+}
+function setDay(d) {
+  if (!d) return false;
+  if (d > localDate()) d = localDate();
+  if (d < shiftDate(localDate(), -MAX_BACK)) return false;
+  if (d !== viewDate) { viewDate = d; renderDayBar(); $('bars').innerHTML = '<div class="msg"><div class="spin"></div>Loading…</div>'; loadToday(); }
+  return true;
+}
 
 async function call(path, data) {
   if (!KEY()) throw new Error('Open this app once from your private address (with ?k=).');
   const r = data
     ? await fetch(API + path, { method: 'POST', body: new URLSearchParams(Object.assign({ k: KEY() }, data)) })
-    : await fetch(`${API}${path}?k=${encodeURIComponent(KEY())}&date=${localDate()}`, { cache: 'no-store' });
+    : await fetch(`${API}${path}?k=${encodeURIComponent(KEY())}&date=${viewDate}`, { cache: 'no-store' });
   const d = await r.json().catch(() => ({}));
   if (!r.ok || !d.ok) throw new Error(d.error || 'Something went wrong. Try again.');
   return d;
@@ -165,7 +214,9 @@ const ofPlan = (v, plan) => v.key === 'protein_g' && plan && Number(plan.protein
 const stackOf = d => d ? d.today.meals.find(m => String(m.meal || '').toLowerCase() === 'morning stack') || null : null;
 async function loadToday() {
   try {
+    const asked = viewDate;
     const d = await call('sh-summary');
+    if (asked !== viewDate) return;   // switched day while loading
     last = d;
     const vs = d.today.vs_plan || [];
     const n = d.today.meals.length;
@@ -173,8 +224,8 @@ async function loadToday() {
     const g = d.plan && Number(d.plan.stack_protein_g) > 0 ? d.plan.stack_protein_g : 30;
     $('bStack').textContent = `☕ Morning stack · ${g} g`;
     $('bStack').classList.toggle('hidden', !!stack);
-    const mealsLine = `<div class="meals">${n ? n + ' logged today' : 'Nothing logged yet today'}${stack ? ` · ☕ stack ✓ ${esc(stack.time || '')}` : ''}</div>`;
-    if (!stack && new Date().getHours() < 12 && screen === 'today') $('bStack').focus();
+    const mealsLine = `<div class="meals">${n ? n + ' logged' + (isToday() ? ' today' : '') : 'Nothing logged yet' + (isToday() ? ' today' : '')}${stack ? ` · ☕ stack ✓${isToday() ? ' ' + esc(stack.time || '') : ''}` : ''}</div>`;
+    if (!stack && isToday() && new Date().getHours() < 12 && screen === 'today' && !['bPrevDay', 'bNextDay'].includes(document.activeElement && document.activeElement.id)) $('bStack').focus();
     if (d.plan && vs.length) {
       $('bars').innerHTML = vs.slice(0, stack ? 4 : 3).map(v => `
         <div><div class="line"><b>${esc(v.label)}</b><span>${v.actual} of ${ofPlan(v, d.plan)}${v.unit === 'servings' ? '' : ' ' + esc(v.unit)}</span></div>
@@ -189,9 +240,9 @@ async function loadToday() {
   } catch (err) { $('bars').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; }
 }
 function todayText(d) {
-  if (!d) return 'Today is not loaded yet.';
+  if (!d) return 'That day is not loaded yet.';
   const n = d.today.meals.length;
-  const base = n ? `${n} meal${n > 1 ? 's' : ''} logged today.` : 'No meals logged yet today.';
+  const base = n ? `${n} meal${n > 1 ? 's' : ''} logged ${daySpoken()}.` : `No meals logged ${daySpoken()} yet.`;
   const vs = d.today.vs_plan || [];
   if (!d.plan || !vs.length) { const t = d.today.totals; return `${base} Protein ${t.protein_g} grams, fibre ${t.fibre_g} grams, fruit and veg ${t.fruit_veg_servings} servings. No plan is set yet.`; }
   const stack = stackOf(d);
@@ -202,8 +253,8 @@ function todayText(d) {
 async function logStack() {
   go('work'); $('workMsg').textContent = 'Logging your morning stack…';
   try {
-    const d = await call('sh-stack', { date: localDate(), time: localTime() });
-    readScreen(d.already ? 'Already logged today' : 'Logged · Morning stack',
+    const d = await call('sh-stack', { date: viewDate, time: isToday() ? localTime() : '07:30' });
+    readScreen(d.already ? 'Already logged ' + daySpoken() : 'Logged · Morning stack' + (isToday() ? '' : ' · ' + esc(dayShort(viewDate))),
       `<div class="desc">☕ Morning stack ✓</div><div class="nums">Protein <b>${d.protein_g} g</b></div><p class="nums">${esc(d.items)}</p>`,
       [['Log a meal', () => { meal = guessMeal(); renderChips(); $('words').value = ''; history.replaceState({ screen: 'log', depth: depth() }, ''); show('log', 'words'); }], ['Done', home, true]]);
     loadToday();
@@ -229,14 +280,15 @@ $('bLogIt').onclick = () => { const t = $('words').value.trim(); if (!t) { $('wo
 async function logMeal(text, mealName) {
   go('work'); $('workMsg').textContent = 'Estimating… about 5 seconds';
   try {
-    const d = await call('sh-meal', { text, source: 'spoken', meal: mealName || guessMeal(), date: localDate(), time: localTime() });
+    const mn = mealName || guessMeal();
+    const d = await call('sh-meal', { text, source: 'spoken', meal: mn, date: viewDate, time: timeFor(mn) });
     $('words').value = '';
     const m = d.meal, c = d.check;
     const vs = c && c.has_plan ? c.vs_plan : [];
-    readScreen(`Logged · ${esc(m.meal || '')}`,
+    readScreen(`Logged · ${esc(m.meal || '')}${isToday() ? '' : ' · ' + esc(dayShort(viewDate))}`,
       `<div class="desc">${esc(m.description)}</div>
        <div class="nums">Protein <b>${m.protein_g} g</b> · Fibre <b>${m.fibre_g} g</b> · Fruit/veg <b>${m.fruit_veg_servings}</b> · ~<b>${m.calories}</b> kcal</div>
-       ${vs.length ? '<div class="vs"><div><b>Today so far</b><span>vs plan</span></div>' + vs.map(v => `<div><b>${esc(v.label)}</b><span>${v.actual} of ${v.plan}</span></div>`).join('') + '</div>' : ''}`,
+       ${vs.length ? '<div class="vs"><div><b>' + (isToday() ? 'Today so far' : esc(dayShort(viewDate))) + '</b><span>vs plan</span></div>' + vs.map(v => `<div><b>${esc(v.label)}</b><span>${v.actual} of ${v.plan}</span></div>`).join('') + '</div>' : ''}`,
       [['Log another', () => { $('words').value = ''; meal = guessMeal(); renderChips(); history.back(); }], ['Done', home, true]]);
     loadToday();
     return { meal: m, check: c };
@@ -259,8 +311,8 @@ function md(s) {   // tiny markdown: **bold**, - bullets, paragraphs
 async function getOptions(question) {
   go('work'); $('workMsg').textContent = 'Thinking…';
   try {
-    const d = await call('sh-ask', { question: question || '', date: localDate() });
-    readScreen(question ? esc(question) : "Options to close today's gaps", md(d.answer), [['More ▾', scrollMore], ['Done', home, true]]);
+    const d = await call('sh-ask', { question: question || '', date: viewDate });
+    readScreen(question ? esc(question) : isToday() ? "Options to close today's gaps" : `Options · ${esc(dayShort(viewDate))}`, md(d.answer), [['More ▾', scrollMore], ['Done', home, true]]);
     return d.answer;
   } catch (err) { readScreen('Options', `<p class="err">${esc(err.message)}</p>`, [['Back', () => history.back(), true]]); throw err; }
 }
@@ -279,7 +331,7 @@ async function showWeek() {
       (plan ? `<tr class="plan"><td>Plan</td>${cols.map(k => `<td>${esc(k === 'protein_g' && Number(plan.protein_max_g) > 0 ? plan[k] + '–' + plan.protein_max_g : plan[k])}</td>`).join('')}</tr>` : '') +
       d.week.days.map(x => { const day = new Date(x.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short' });
         return x.meals ? `<tr><td>${day}</td>${cols.map(k => `<td>${x[k]}</td>`).join('')}</tr>` : `<tr><td>${day}</td><td class="none" colspan="${cols.length}">—</td></tr>`; }).join('') + '</table>';
-    readScreen('This week', html, [['More ▾', scrollMore], ['Done', home, true]]);
+    readScreen(isToday() ? 'This week' : `Week to ${esc(dayShort(viewDate))}`, html, [['More ▾', scrollMore], ['Done', home, true]]);
   } catch (err) { readScreen('This week', `<p class="err">${esc(err.message)}</p>`, [['Back', () => history.back(), true]]); }
 }
 $('bWeek').onclick = showWeek;
@@ -320,9 +372,11 @@ const TOOLS = [
     description: 'Log a meal the person ate in Stronger Humans, from their own description. Use their words as the description. Optional meal: Breakfast, Lunch, Dinner or Snack.',
     inputSchema: { type: 'object', properties: {
       description: { type: 'string', description: 'What they ate, in their words, e.g. "chicken salad and an apple"' },
-      meal: { type: 'string', enum: MEALS, description: 'Which meal; leave out to pick by time of day' } }, required: ['description'] },
-    execute: async ({ description, meal: m }) => {
+      meal: { type: 'string', enum: MEALS, description: 'Which meal; leave out to pick by time of day' },
+      day: { type: 'string', description: 'Only for a missed earlier day: "yesterday", a weekday name, or YYYY-MM-DD (last 14 days). Leave out for today.' } }, required: ['description'] },
+    execute: async ({ description, meal: m, day }) => {
       try {
+        if (day && !setDay(parseDay(day))) return reply('I can only log for today or the last 14 days.');
         const r = await logMeal(String(description || ''), MEALS.includes(m) ? m : guessMeal());
         const vs = r.check && r.check.has_plan ? r.check.vs_plan : [];
         return reply(`Logged: ${r.meal.description} About ${r.meal.protein_g} grams protein, ${r.meal.fibre_g} grams fibre.` +
@@ -333,17 +387,18 @@ const TOOLS = [
   {
     name: 'log_morning_stack',
     description: 'Log the person\'s morning stack (their usual morning protein drink and supplements) in Stronger Humans. Use when they say they had or drank their morning stack, shake or protein drink. Logs once per day.',
-    inputSchema: { type: 'object', properties: {} },
-    execute: async () => {
-      try { const d = await logStack(); return reply(d.already ? `Your morning stack was already logged today${d.time ? ' at ' + d.time : ''}.` : `Morning stack logged: ${d.protein_g} grams protein.`); }
+    inputSchema: { type: 'object', properties: { day: { type: 'string', description: 'Only for a missed earlier day: "yesterday", a weekday name, or YYYY-MM-DD. Leave out for today.' } } },
+    execute: async ({ day } = {}) => {
+      try { if (day && !setDay(parseDay(day))) return reply('I can only log for today or the last 14 days.');
+        const d = await logStack(); return reply(d.already ? `Your morning stack was already logged ${daySpoken()}.` : `Morning stack logged ${daySpoken()}: ${d.protein_g} grams protein.`); }
       catch (e) { return reply('Not logged: ' + e.message); }
     }
   },
   {
     name: 'show_today',
-    description: 'Show and read out today in Stronger Humans: meals logged and how today compares with the person\'s own plan.',
-    inputSchema: { type: 'object', properties: {} },
-    execute: async () => { home(); await loadToday(); return reply(todayText(last)); }
+    description: 'Show and read out a day in Stronger Humans (today unless they name an earlier day): meals logged and how it compares with the person\'s own plan.',
+    inputSchema: { type: 'object', properties: { day: { type: 'string', description: '"yesterday", a weekday name, or YYYY-MM-DD. Leave out for today.' } } },
+    execute: async ({ day } = {}) => { if (!setDay(parseDay(day || 'today'))) return reply('I can only show the last 14 days.'); home(); await loadToday(); return reply(todayText(last)); }
   },
   {
     name: 'get_options',
@@ -364,7 +419,11 @@ const TOOLS = [
   for (const t of TOOLS) { try { const p = mc.registerTool(t); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
 })();
 
+$('bPrevDay').onclick = () => setDay(shiftDate(viewDate, -1));
+$('bNextDay').onclick = () => { setDay(shiftDate(viewDate, 1)); if (isToday()) $('bLog').focus(); };
+
 /* ---------- start ---------- */
+renderDayBar();
 history.replaceState({ screen: 'today', depth: 0 }, '');
 show('today', 'bLog');
 loadToday();

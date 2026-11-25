@@ -92,11 +92,27 @@
   .answer ul { padding-left: 20px; margin: 6px 0; }
   .foot { text-align:center; color:#5d686f; font-size: 12px; margin-top: 26px; }
   .hidden { display: none !important; }
+  /* day switcher: log or fix an earlier day */
+  .daybar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: 52px 1fr 52px; gap: 8px; align-items: center;
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px; margin-bottom: 6px; }
+  .daybar.past { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .daybar button { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: #22272d; color: var(--text); font: inherit; font-size: 18px; font-weight: 700; cursor: pointer; }
+  .daybar button:disabled { opacity: .3; }
+  .daybar .lbl { text-align: center; line-height: 1.2; }
+  .daybar .lbl b { display: block; font-size: 16px; }
+  .daybar .lbl span { font-size: 12px; color: var(--dim); }
+  .daybar .lbl a { color: var(--accent); font-size: 12px; cursor: pointer; text-decoration: underline; }
 </style>
 </head>
 <body>
 <main>
   <header><h1>Stronger <span>Humans</span></h1><div id="today"></div></header>
+  <!-- Day switcher: ◀ steps back to fill in or fix a missed day (up to 14 days); everything below saves to the day shown -->
+  <div class="daybar" id="dayBar">
+    <button id="bPrevDay" aria-label="Earlier day">◀</button>
+    <div class="lbl" id="dayLbl"></div>
+    <button id="bNextDay" aria-label="Later day">▶</button>
+  </div>
 
   <div class="card hidden" id="keyCard">
     <b>Paste your private address once</b>
@@ -138,7 +154,7 @@
   </div>
 
   <!-- CHECK: today and this week vs plan -->
-  <h2><span class="step">CHECK</span> Today</h2>
+  <h2><span class="step">CHECK</span> <span id="checkTitle">Today</span></h2>
   <div class="card" id="todayCard"><div class="status"><div class="spin"></div>Loading…</div></div>
 
   <h2>This week</h2>
@@ -174,6 +190,41 @@ const pad = n => String(n).padStart(2, '0');
 const localDate = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const localTime = (d = new Date()) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 $('today').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+/* ---------- which day we're logging for: today by default, ◀ to go back and fill in a missed day ---------- */
+const MAX_BACK = 14;
+let viewDate = localDate();
+const isToday = () => viewDate === localDate();
+const shiftDate = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return localDate(d); };
+const dayShort = s => new Date(s + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const dayWord = s => s === localDate() ? 'Today' : s === shiftDate(localDate(), -1) ? 'Yesterday' : dayShort(s);
+// A past-day meal gets a typical time for its meal, so the day's list reads in order.
+const MEAL_TIME = { Breakfast: '08:00', Lunch: '12:30', Snack: '15:30', Dinner: '18:30' };
+const timeFor = m => isToday() ? localTime() : (MEAL_TIME[m] || '12:00');
+function renderDayBar() {
+  const today = isToday();
+  $('dayBar').classList.toggle('past', !today);
+  $('dayLbl').innerHTML = today
+    ? `<b>Today</b><span>${esc(dayShort(viewDate))} · ◀ to fill in an earlier day</span>`
+    : `<b>${esc(dayWord(viewDate))}${dayWord(viewDate) === 'Yesterday' ? ' · ' + esc(dayShort(viewDate)) : ''}</b><span>Logging for this day · </span><a id="bToday">Back to today</a>`;
+  $('bPrevDay').disabled = viewDate <= shiftDate(localDate(), -MAX_BACK);
+  $('bNextDay').disabled = today;
+  if ($('bToday')) $('bToday').onclick = () => setDay(localDate());
+  $('checkTitle').textContent = dayWord(viewDate);
+  $('bGap').textContent = today ? "Options to close today's gaps" : `Options to close ${dayWord(viewDate) === 'Yesterday' ? "yesterday's" : dayShort(viewDate) + "'s"} gaps`;
+  if ($('wIn')) $('wIn').placeholder = today ? "Today's weight (lb)" : `Weight for ${dayShort(viewDate)} (lb)`;
+}
+function setDay(d) {
+  if (d > localDate()) d = localDate();
+  if (d < shiftDate(localDate(), -MAX_BACK)) d = shiftDate(localDate(), -MAX_BACK);
+  if (d === viewDate) return;
+  viewDate = d;
+  $('result').innerHTML = ''; $('status').innerHTML = ''; $('answer').innerHTML = '';
+  if (!isToday() && MEALS.indexOf(meal) < 0) meal = 'Dinner';
+  renderDayBar();
+  $('todayCard').innerHTML = '<div class="status"><div class="spin"></div>Loading…</div>';
+  loadSummary();
+}
 const post = (path, data) => fetch(API + path, { method: 'POST', body: new URLSearchParams(Object.assign({ k: KEY() }, data)) })
   .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok || !d.ok) throw new Error(d.error || 'Something went wrong. Please try again.'); return d; });
 
@@ -239,14 +290,14 @@ async function savePlan() {
 /* ---------- weight: manual entries, neutral ---------- */
 let weights = null;
 function renderWeights() {
-  const e = (weights && weights.entries) || [];
+  const e = ((weights && weights.entries) || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const latest = e.length ? e[e.length - 1] : null;
   const goal = has('goal_weight_lb') ? Number(plan.goal_weight_lb) : 0;
   const recent = e.slice(-5).reverse();
   $('weightCard').innerHTML = `
     ${latest ? `<div class="planview"><div><b>${latest.weight_lb}</b><span>lb · ${esc(prettyDate(latest.date))}</span></div>
       ${goal ? `<div><b>${goal}</b><span>goal lb</span></div><div><b>${Math.round(Math.abs(latest.weight_lb - goal) * 10) / 10}</b><span>lb ${latest.weight_lb > goal ? 'to go' : 'past goal'}</span></div>` : ''}</div>` : '<div class="note" style="margin-top:0">No weight logged yet.</div>'}
-    <div class="row" style="align-items:center"><input class="field" style="flex:1;margin-top:0" type="number" inputmode="decimal" step="0.1" min="60" id="wIn" placeholder="Today's weight (lb)">
+    <div class="row" style="align-items:center"><input class="field" style="flex:1;margin-top:0" type="number" inputmode="decimal" step="0.1" min="60" id="wIn" placeholder="${isToday() ? 'Today\'s weight (lb)' : 'Weight for ' + esc(dayShort(viewDate)) + ' (lb)'}">
       <button class="ghost" id="bWeight" style="min-height:44px">Log weight</button></div>
     ${recent.length > 1 ? `<div class="note">Recent: ${recent.map(x => `${esc(prettyDate(x.date).replace(/, \d{4}$/, ''))} ${x.weight_lb}`).join(' · ')}</div>` : ''}
     <div id="weightStatus"></div>`;
@@ -263,7 +314,7 @@ async function logWeight() {
   if (!w) { $('wIn').focus(); return; }
   if (needKey()) return;
   $('bWeight').disabled = true; $('weightStatus').innerHTML = '<div class="status"><div class="spin"></div>Saving…</div>';
-  try { weights = await post('sh-weight', { weight_lb: w, date: localDate() }); renderWeights(); }
+  try { weights = await post('sh-weight', { weight_lb: w, date: viewDate }); renderWeights(); }
   catch (err) { $('weightStatus').innerHTML = `<div class="status err">${esc(err.message)}</div>`; $('bWeight').disabled = false; }
 }
 
@@ -300,7 +351,7 @@ async function logMeal(data, waitText, img) {
   busy(true); $('result').innerHTML = '';
   $('status').innerHTML = `<div class="status"><div class="spin"></div>${waitText}</div>`;
   try {
-    const d = await post('sh-meal', Object.assign({ meal, date: localDate(), time: localTime() }, data));
+    const d = await post('sh-meal', Object.assign({ meal, date: viewDate, time: timeFor(meal) }, data));
     $('status').innerHTML = '';
     $('result').innerHTML = mealCard(d.meal, img) + checkLine(d.check);
     return true;
@@ -361,7 +412,7 @@ function mealCard(m, img) {
 const ofPlan = v => v.key === 'protein_g' && has('protein_max_g') ? `${v.plan}–${plan.protein_max_g}` : `${v.plan}`;
 function checkLine(c) {
   if (!c || !c.has_plan || !c.vs_plan.length) return '';
-  return `<div class="note" style="margin-top:12px"><b style="color:var(--text)">Today so far vs your plan:</b> ` +
+  return `<div class="note" style="margin-top:12px"><b style="color:var(--text)">${isToday() ? 'Today so far' : esc(dayShort(viewDate))} vs your plan:</b> ` +
     c.vs_plan.map(v => `${esc(v.label)} ${v.actual} of ${ofPlan(v)}${v.unit === 'servings' ? '' : ' ' + esc(v.unit)}`).join(' · ') + '</div>';
 }
 
@@ -369,7 +420,7 @@ function checkLine(c) {
 let stackDone = null;   // today's stack meal, if logged
 function renderStack() {
   const g = has('stack_protein_g') ? plan.stack_protein_g : 30;
-  $('bStack').textContent = stackDone ? `✓ Morning stack logged${stackDone.time ? ' at ' + stackDone.time : ''}` : `☕ Morning stack · ${g} g protein`;
+  $('bStack').textContent = stackDone ? `✓ Morning stack logged${isToday() && stackDone.time ? ' at ' + stackDone.time : isToday() ? '' : ' for ' + dayShort(viewDate)}` : `☕ Morning stack · ${g} g protein`;
   $('bStack').disabled = !!stackDone;
 }
 $('bStack').onclick = async () => {
@@ -377,8 +428,8 @@ $('bStack').onclick = async () => {
   $('bStack').disabled = true; $('result').innerHTML = '';
   $('status').innerHTML = '<div class="status"><div class="spin"></div>Logging your morning stack…</div>';
   try {
-    const d = await post('sh-stack', { date: localDate(), time: localTime() });
-    $('status').innerHTML = `<div class="note">${d.already ? 'Already logged today' : 'Logged'}: ${esc(d.items)} · ${d.protein_g} g protein</div>`;
+    const d = await post('sh-stack', { date: viewDate, time: isToday() ? localTime() : '07:30' });
+    $('status').innerHTML = `<div class="note">${d.already ? 'Already logged ' + (isToday() ? 'today' : 'for ' + dayShort(viewDate)) : 'Logged'}: ${esc(d.items)} · ${d.protein_g} g protein</div>`;
     loadSummary();
   } catch (err) { $('status').innerHTML = `<div class="status err">${esc(err.message)}</div>`; $('bStack').disabled = false; }
 };
@@ -392,7 +443,9 @@ function vsBars(list) {
 async function loadSummary() {
   if (!KEY()) { $('todayCard').innerHTML = '<div class="status">Add your private address above.</div>'; $('planCard').innerHTML = ''; return; }
   try {
-    const d = await fetch(`${API}sh-summary?k=${encodeURIComponent(KEY())}&date=${localDate()}`, { cache: 'no-store' }).then(r => r.json());
+    const asked = viewDate;
+    const d = await fetch(`${API}sh-summary?k=${encodeURIComponent(KEY())}&date=${asked}`, { cache: 'no-store' }).then(r => r.json());
+    if (asked !== viewDate) return;   // switched day while loading
     if (!d.ok) throw new Error(d.error || 'Could not load today.');
     plan = d.plan && d.plan.updated_at ? d.plan : null;
     if (!editingPlan) renderPlan();
@@ -408,7 +461,7 @@ async function loadSummary() {
     $('todayCard').innerHTML = top + `<div style="margin-top:10px">` + (d.today.meals.length
       ? d.today.meals.map(m => `<div class="meal"><div class="t">${esc(m.time)} · ${esc(m.meal || 'Meal')}<span class="src">${esc(m.source === 'photo' ? '📷 photo' : m.source === 'spoken' ? '🎤 spoken' : m.source === 'stack' ? '☕ stack' : '⌨️ typed')}</span></div>
           <div class="desc">${esc(m.description)}</div></div>`).join('')
-      : '<div class="note">No meals logged yet today.</div>') + '</div>';
+      : `<div class="note">${isToday() ? 'No meals logged yet today.' : 'Nothing logged for ' + esc(dayShort(viewDate)) + ' yet.'}</div>`) + '</div>';
 
     const keys = plan ? ['protein_g', 'fibre_g', 'fruit_veg_servings'].filter(k => Number(plan[k]) > 0) : [];
     const cols = keys.length ? keys : ['protein_g', 'fibre_g', 'fruit_veg_servings'];
@@ -438,13 +491,18 @@ async function ask(question) {
   if (needKey()) return;
   $('bAsk').disabled = $('bGap').disabled = true;
   $('answer').innerHTML = `<div class="status"><div class="spin"></div>Thinking…</div>`;
-  try { const d = await post('sh-ask', { question, date: localDate() }); $('answer').innerHTML = `<div class="answer">${md(d.answer)}</div>`; }
+  try { const d = await post('sh-ask', { question, date: viewDate }); $('answer').innerHTML = `<div class="answer">${md(d.answer)}</div>`; }
   catch (err) { $('answer').innerHTML = `<div class="status err">${esc(err.message)}</div>`; }
   finally { $('bAsk').disabled = $('bGap').disabled = false; }
 }
 $('bGap').onclick = () => ask('');
 $('bAsk').onclick = () => { const q = $('q').value.trim(); if (!q) { $('q').focus(); return; } ask(q); };
 
+$('bPrevDay').onclick = () => setDay(shiftDate(viewDate, -1));
+$('bNextDay').onclick = () => setDay(shiftDate(viewDate, 1));
+// ?day=YYYY-MM-DD opens straight on that day (used by the glasses view's "edit on phone" and handy for bookmarks)
+(() => { const q = new URLSearchParams(location.search).get('day'); if (q && /^\d{4}-\d{2}-\d{2}$/.test(q)) viewDate = q < localDate() ? (q < shiftDate(localDate(), -MAX_BACK) ? shiftDate(localDate(), -MAX_BACK) : q) : localDate(); })();
+renderDayBar();
 renderStack();
 loadSummary();
 loadWeights();
