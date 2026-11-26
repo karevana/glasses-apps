@@ -1067,13 +1067,14 @@ function buildGuide() {
   const SEVEN = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'], P1 = ['I', 'IV', 'V', 'I'], P2 = ['I', 'V', 'vi', 'IV'];
   const pairs = [[2, 1], [4, 3], [6, 5], [7, 8]], TW = ['I7', 'I7', 'I7', 'I7', 'IV7', 'IV7', 'I7', 'I7', 'V7', 'IV7', 'I7', 'V7'];
   const cell = (t, o) => Object.assign({ t }, o || {});
+  const dt = d => d === 8 ? '1' : degText(d);   // the octave-up home is just "1" on the cards
   return [
     { title: 'Your first musical landscape', sub: 'Concert C major · written tenor sax D major',
-      head: scale8.map(d => cell(degText(d), { home: d % 7 === 1 })),
+      head: scale8.map(d => cell(dt(d), { home: d % 7 === 1 })),
       rows: [['Guitar', scale8.map(d => cell(spell(C, d)))], ['Sax', scale8.map(d => cell(spell(Cs, d)))]],
       tip: 'Sing the numbers first. Both instruments share the same musical relationships, even when their note names differ.' },
     { title: 'Musical gravity', sub: 'Common resolutions in a major key',
-      head: pairs.map(([a, b]) => cell(`${degText(a)} → ${degText(b)}`)),
+      head: pairs.map(([a, b]) => cell(`${dt(a)} → ${dt(b)}`)),
       rows: [['Guitar', pairs.map(([a, b]) => cell(`${spell(C, a)} → ${spell(C, b)}`))], ['Sax', pairs.map(([a, b]) => cell(`${spell(Cs, a)} → ${spell(Cs, b)}`))]],
       tip: 'Play each pair over a concert C drone. Notice how the tension changes. Common resolutions, not rules.' },
     { title: 'The seven chords', sub: 'Concert C major · written tenor sax D major',
@@ -1087,7 +1088,7 @@ function buildGuide() {
         ['I–V–vi–IV', P2.map(s => cell(gChord(C, s, false)))], ['Sax', P2.map(s => cell(gChord(Cs, s, false), { dim: true }))]],
       tip: 'Start with chord roots. Then aim for 3rds or 5ths when the chord changes. Sax plays single notes, not chords.' },
     { title: 'The minor landscape', sub: 'Concert A natural minor · written sax B minor',
-      head: minor8.map(d => cell(degText(d), { home: d === 1 || d === 8 })),
+      head: minor8.map(d => cell(dt(d), { home: d === 1 || d === 8 })),
       rows: [['Guitar', minor8.map(d => cell(spell(A, d)))], ['Sax', minor8.map(d => cell(spell(As, d)))]],
       tip: 'A minor uses the same concert notes as C major — but with a different home. Sing and resolve to the new tonic.' },
     { title: 'The blues palette', sub: 'Concert A blues · written sax B blues',
