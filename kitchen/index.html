@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Hands-free cooking on Meta Ray-Ban Display: this week's recipes from your pantry, one step at a time, with timers.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>Kitchen</title>
+<style>
+  /* Stronger Humans · Kitchen on the glasses.
+     Additive display: black = see-through. 600x600.
+     Reads this week's recipes (n8n sh-kitchen), shows one step per screen with tap-to-start timers,
+     logs the finished meal to Stronger Humans (sh-meal) and can mark pantry items used up (sh-pantry-save). */
+  :root {
+    --accent: #3df5c8;   /* Stronger Humans green */
+    --warm: #ffb46b;     /* timers, shopping */
+    --text: #ffffff;
+    --dim: #a9b2b8;
+    --focus: #ffd84a;
+    --u: min(1vw, 1vh);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; padding: calc(var(--u) * 3.5); gap: calc(var(--u) * 2); }
+  .screen.active { display: flex; }
+  button { font: inherit; color: inherit; background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.5); cursor: pointer;
+    padding: calc(var(--u) * 2.3) calc(var(--u) * 1.5); font-size: calc(var(--u) * 4.5); font-weight: 700; }
+  button.go { background: #062b24; border-color: var(--accent); }
+  button.tm { background: #2b1a08; border-color: var(--warm); }
+  button:disabled { opacity: .3; }
+  button:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u) * .6) var(--focus); }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: calc(var(--u) * 2); }
+  .brand { font-size: calc(var(--u) * 5.4); font-weight: 800; margin: 0; }
+  .brand span { color: var(--accent); }
+  .sub { color: var(--dim); font-size: calc(var(--u) * 3.8); }
+  .hidden { display: none !important; }
+  .msg { color: var(--dim); font-size: calc(var(--u) * 4.4); text-align: center; margin: auto 0; line-height: 1.4; }
+  .msg b { color: var(--text); }
+  .err { color: #ffb4b4; }
+  .spin { width: calc(var(--u) * 10); height: calc(var(--u) * 10); margin: 0 auto calc(var(--u) * 3); border-radius: 50%;
+    border: calc(var(--u) * 1.2) solid #2a2a2a; border-top-color: var(--accent); animation: sp 1s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .list { display: flex; flex-direction: column; gap: calc(var(--u) * 2); flex: 1; min-height: 0; }
+  .list button { text-align: left; display: flex; flex-direction: column; gap: calc(var(--u) * .6); }
+  .list button small { color: var(--dim); font-weight: 600; font-size: calc(var(--u) * 3.6); }
+  .meals { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(var(--u) * 1.8); }
+  .row { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: calc(var(--u) * 1.6); margin-top: auto; }
+  .row2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: calc(var(--u) * 1.6); margin-top: auto; }
+  /* timers strip (shows on every screen while any timer runs) */
+  #timers { position: absolute; top: calc(var(--u) * 1.2); right: calc(var(--u) * 2); display: flex; gap: calc(var(--u) * 1.4); z-index: 5; }
+  #timers span { background: #2b1a08; border: calc(var(--u) * .4) solid var(--warm); color: var(--warm); border-radius: 999px;
+    padding: calc(var(--u) * .5) calc(var(--u) * 2); font-size: calc(var(--u) * 4); font-weight: 800; font-variant-numeric: tabular-nums; }
+  #timers span.done { background: var(--warm); color: #000; animation: blink .6s step-end infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  /* recipe overview */
+  .title { font-size: calc(var(--u) * 5.6); font-weight: 800; line-height: 1.15; }
+  .meta { color: var(--dim); font-size: calc(var(--u) * 3.8); }
+  .meta b { color: var(--accent); }
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; font-size: calc(var(--u) * 4.2); line-height: 1.35; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .ing { display: flex; gap: calc(var(--u) * 2); padding: calc(var(--u) * .8) 0; }
+  .ing i { font-style: normal; width: calc(var(--u) * 5); color: var(--accent); }
+  .ing.need i { color: var(--warm); }
+  .ing span em { color: var(--dim); font-style: normal; }
+  /* step */
+  .stepno { color: var(--accent); font-size: calc(var(--u) * 4); font-weight: 800; letter-spacing: .06em; }
+  .dots { display: flex; gap: calc(var(--u) * 1); }
+  .dots i { width: calc(var(--u) * 2); height: calc(var(--u) * 2); border-radius: 50%; background: #333; }
+  .dots i.on { background: var(--accent); }
+  .steptext { flex: 1; min-height: 0; display: flex; align-items: center; font-size: calc(var(--u) * 6.4); line-height: 1.3; font-weight: 600; overflow: hidden; }
+  /* used-up toggles */
+  .toggles { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 1.6); flex: 1; min-height: 0; overflow-y: auto; align-content: start; scrollbar-width: none; }
+  .toggles button { font-size: calc(var(--u) * 3.8); text-align: left; }
+  .toggles button.on { background: #2b1a08; border-color: var(--warm); }
+  .big { font-size: calc(var(--u) * 5.2); font-weight: 800; text-align: center; }
+</style>
+</head>
+<body>
+<div id="timers"></div>
+
+<!-- HOME: pick a meal -->
+<section class="screen active" id="home">
+  <div class="top"><h1 class="brand">Kitchen</h1><div class="sub" id="homeSub"></div></div>
+  <div id="homeBody" class="list"><div class="msg"><div class="spin"></div>Getting this week's recipes…</div></div>
+  <div class="meals" id="mealBtns"></div>
+</section>
+
+<!-- RECIPES for a meal -->
+<section class="screen" id="pick">
+  <div class="top"><h1 class="brand" id="pickTitle"></h1><div class="sub">Pick one</div></div>
+  <div class="list" id="pickList"></div>
+</section>
+
+<!-- RECIPE overview -->
+<section class="screen" id="recipe">
+  <div class="title" id="rTitle"></div>
+  <div class="meta" id="rMeta"></div>
+  <div class="scroll" id="rIng"></div>
+  <div class="row2">
+    <button class="go" id="bStart">Start cooking ▶</button>
+    <button id="bIngMore">More ▾</button>
+  </div>
+</section>
+
+<!-- STEP -->
+<section class="screen" id="step">
+  <div class="top"><div class="stepno" id="sNo"></div><div class="dots" id="sDots"></div></div>
+  <div class="steptext" id="sText"></div>
+  <button class="tm hidden" id="bTimer"></button>
+  <div class="row">
+    <button id="bPrevStep">◀ Back</button>
+    <button id="bReadStep">🔊 Read</button>
+    <button class="go" id="bNextStep">Next ▶</button>
+  </div>
+</section>
+
+<!-- DONE -->
+<section class="screen" id="done">
+  <div class="big" style="margin-top:auto">Done. Enjoy!</div>
+  <div class="msg" id="doneMsg" style="margin:0"></div>
+  <div style="display:grid;gap:calc(var(--u)*1.8);margin-top:auto">
+    <button class="go" id="bLogMeal">Log this meal</button>
+    <button id="bUsed">Used something up?</button>
+    <button id="bFinish">Finish</button>
+  </div>
+</section>
+
+<!-- USED UP -->
+<section class="screen" id="used">
+  <div class="top"><div class="brand" style="font-size:calc(var(--u)*4.6)">Used up?</div><div class="sub">Tap to remove from the list</div></div>
+  <div class="toggles" id="usedList"></div>
+  <div class="row2">
+    <button class="go" id="bUsedSave">Save</button>
+    <button id="bUsedSkip">Skip</button>
+  </div>
+</section>
+
+<!-- WORK / MESSAGE -->
+<section class="screen" id="work"><div class="msg" id="workMsg"></div></section>
+
+<script>
+/* ---------- setup ---------- */
+const API = 'https://n8n.rainandwind.ca/webhook/';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+// Same private key as Stronger Humans (same site, usually already remembered).
+(() => { const k = new URLSearchParams(location.search).get('k'); if (k) store.set('coach.key', k); })();
+const KEY = () => store.get('coach.key', '');
+const pad = n => String(n).padStart(2, '0');
+const localDate = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const localTime = (d = new Date()) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const MEALS = ['breakfast', 'lunch', 'dinner'];
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const norm = s => String(s || '').toLowerCase().replace(/\b(canned|tinned|fresh|frozen|a|an|the)\b/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim().replace(/(ies)$/, 'y').replace(/([^s])s$/, '$1');
+
+async function call(path, data, ms = 45000) {
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = data
+      ? await fetch(API + path, { method: 'POST', body: new URLSearchParams(Object.assign({ k: KEY() }, data)), signal: ctrl.signal })
+      : await fetch(`${API}${path}?k=${encodeURIComponent(KEY())}&t=${Date.now()}`, { cache: 'no-store', signal: ctrl.signal });
+    const d = await r.json().catch(() => ({ ok: false, error: `The server answered ${r.status}.` }));
+    if (!d.ok) throw new Error(d.error || 'Something went wrong.');
+    return d;
+  } catch (e) { throw new Error(e.name === 'AbortError' ? 'That took too long. Try again.' : e.message === 'Failed to fetch' ? 'No connection.' : e.message); }
+  finally { clearTimeout(t); }
+}
+
+/* ---------- screens + Back ---------- */
+let screen = 'home';
+function show(id, focusId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  screen = id;
+  if (focusId) setTimeout(() => { const el = $(focusId); if (el && !el.disabled) el.focus(); }, 0);
+}
+const depth = () => (history.state && history.state.depth) || 0;
+function go(id, focusId, state) { history.pushState(Object.assign({ screen: id, depth: depth() + 1 }, state || {}), ''); show(id, focusId); }
+// Change the current history entry (e.g. step 2 -> 3) without adding one, keeping its depth for Finish.
+const replace = st => history.replaceState(Object.assign({ depth: depth() }, st), '');
+window.addEventListener('popstate', e => {
+  stopReading();
+  const s = (e.state && e.state.screen) || 'home';
+  if (s === 'pick') { openMeal(e.state.meal, true); }
+  else if (s === 'recipe' && cur) { renderRecipe(); show('recipe', 'bStart'); }
+  else if (s === 'step' && cur) { at = e.state.at || 0; renderStep(); show('step', 'bNextStep'); }
+  else { renderHome(); show('home', homeFocus()); }
+});
+
+/* ---------- data ---------- */
+let kit = null, cur = null, at = 0;
+async function load() {
+  if (!KEY()) { $('homeBody').innerHTML = `<div class="msg">This copy has no key.<br>Open Kitchen once from the address that ends in <b>?k=…</b> (same key as Stronger Humans).</div>`; return; }
+  try { kit = await call('sh-kitchen'); store.set('kitchen.last', kit); }
+  catch (e) {
+    const saved = store.get('kitchen.last', null);
+    if (!saved) { $('homeBody').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; return; }
+    kit = Object.assign({}, saved, { offline: e.message });
+  }
+  renderHome(); show('home', homeFocus());
+}
+const mealNow = () => { const h = new Date().getHours(); return h < 10 ? 'breakfast' : h < 15 ? 'lunch' : 'dinner'; };
+const homeFocus = () => 'm_' + mealNow();
+function renderHome() {
+  const n = kit ? kit.pantry.items.length : 0;
+  $('homeSub').textContent = kit ? `${n} in pantry` : '';
+  const any = kit && MEALS.some(m => (kit.recipes[m] || []).length);
+  $('homeBody').innerHTML = !kit ? '' : kit.offline ? `<div class="msg err">Offline (${esc(kit.offline)}). Showing your saved recipes.</div>`
+    : any ? `<div class="msg">What are we making?<br><b style="color:var(--accent)">${cap(mealNow())}</b> is up next.</div>`
+    : `<div class="msg">No recipes yet.<br>On your phone, open <b>Kitchen</b>, scan your kitchen and tap <b>New recipes</b>.</div>`;
+  $('mealBtns').innerHTML = MEALS.map(m => `<button id="m_${m}" class="${m === mealNow() ? 'go' : ''}" ${kit && (kit.recipes[m] || []).length ? '' : 'disabled'}>${cap(m)}</button>`).join('');
+  MEALS.forEach(m => $('m_' + m).onclick = () => openMeal(m));
+}
+function openMeal(m, fromPop) {
+  const list = (kit && kit.recipes[m]) || [];
+  $('pickTitle').textContent = cap(m);
+  $('pickList').innerHTML = list.map((r, i) => `<button id="r_${i}"><span>${esc(r.title)}</span><small>${r.minutes} min · ${r.protein_g} g protein${r.ingredients.some(g => !g.have) ? ' · 🛒 needs ' + r.ingredients.filter(g => !g.have).length : ''}</small></button>`).join('');
+  list.forEach((r, i) => $('r_' + i).onclick = () => { cur = r; at = 0; renderRecipe(); go('recipe', 'bStart'); });
+  if (fromPop) show('pick', 'r_0'); else go('pick', 'r_0', { meal: m });
+}
+
+/* ---------- recipe overview ---------- */
+function renderRecipe() {
+  $('rTitle').textContent = cur.title;
+  $('rMeta').innerHTML = `${cur.minutes} min · <b>${cur.protein_g} g protein</b> · ${cur.steps.length} steps`;
+  $('rIng').innerHTML = cur.ingredients.map(g => `<div class="ing ${g.have ? '' : 'need'}"><i>${g.have ? '✓' : '🛒'}</i><span>${esc(g.name)} <em>${esc(g.amount || '')}</em></span></div>`).join('');
+  $('rIng').scrollTop = 0;
+  setTimeout(() => { $('bIngMore').disabled = $('rIng').scrollHeight <= $('rIng').clientHeight + 4; }, 0);
+}
+$('bIngMore').onclick = () => { const s = $('rIng'); s.scrollTop = s.scrollTop + s.clientHeight >= s.scrollHeight - 4 ? 0 : s.scrollTop + s.clientHeight * .8; };
+$('bStart').onclick = () => { at = 0; renderStep(); go('step', 'bNextStep', { at: 0 }); keepAwake(true); };
+
+/* ---------- steps ---------- */
+function renderStep() {
+  const s = cur.steps[at];
+  $('sNo').textContent = `STEP ${at + 1} OF ${cur.steps.length}`;
+  $('sDots').innerHTML = cur.steps.map((x, i) => `<i class="${i <= at ? 'on' : ''}"></i>`).join('');
+  const t = $('sText'); t.textContent = s.text;
+  // shrink long steps until they fit
+  let fs = 6.4; t.style.fontSize = `calc(var(--u) * ${fs})`;
+  while (t.scrollHeight > t.clientHeight + 2 && fs > 4) { fs -= 0.3; t.style.fontSize = `calc(var(--u) * ${fs})`; }
+  const tm = $('bTimer');
+  tm.classList.toggle('hidden', !s.timer_min);
+  if (s.timer_min) tm.textContent = timers.some(x => x.step === at && x.recipe === cur.id && !x.done) ? `⏱ ${s.timer_min} min timer running` : `⏱ Start ${s.timer_min} min timer`;
+  $('bPrevStep').disabled = at === 0;
+  $('bNextStep').textContent = at === cur.steps.length - 1 ? 'Finish ✓' : 'Next ▶';
+}
+function nextStep() {
+  stopReading();
+  if (at < cur.steps.length - 1) { at++; replace({ screen: 'step', at }); renderStep(); $('bNextStep').focus(); }
+  else finishCooking();
+}
+function prevStep() { stopReading(); if (at > 0) { at--; replace({ screen: 'step', at }); renderStep(); } }
+$('bNextStep').onclick = nextStep;
+$('bPrevStep').onclick = prevStep;
+$('bReadStep').onclick = () => speak(`Step ${at + 1}. ${cur.steps[at].text}`);
+$('bTimer').onclick = () => { const s = cur.steps[at]; if (timers.some(x => x.step === at && x.recipe === cur.id && !x.done)) return; startTimer(s.timer_min, `Step ${at + 1}`, at); renderStep(); $('bNextStep').focus(); };
+
+/* ---------- timers: several can run; they keep going across steps ---------- */
+let timers = [];
+function startTimer(min, label, step) {
+  timers.push({ id: Date.now() + Math.random(), end: Date.now() + min * 60000, label, step, recipe: cur ? cur.id : '', done: false });
+  tick();
+}
+function fmt(ms) { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${pad(s % 60)}`; }
+function tick() {
+  const now = Date.now();
+  for (const t of timers) if (!t.done && now >= t.end) { t.done = true; t.doneAt = now; alarm(t); }
+  timers = timers.filter(t => !t.done || now - t.doneAt < 60000);   // a finished timer blinks for a minute
+  $('timers').innerHTML = timers.map(t => `<span class="${t.done ? 'done' : ''}">${t.done ? '✓ ' + esc(t.label) : '⏱ ' + fmt(t.end - now)}</span>`).join('');
+}
+setInterval(tick, 1000);
+function alarm(t) {
+  try { const ac = new (window.AudioContext || window.webkitAudioContext)(); [0, .35, .7].forEach(d => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 880; o.connect(g); g.connect(ac.destination); g.gain.value = .25; o.start(ac.currentTime + d); o.stop(ac.currentTime + d + .2); }); } catch (e) {}
+  speak(`Timer done. ${t.label}.`);
+  if (screen === 'step' && cur && t.recipe === cur.id && t.step !== at) $('bNextStep').focus();
+}
+
+/* ---------- read aloud + keep the display awake while cooking ---------- */
+let reading = false;
+function speak(text) { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; reading = true; u.onend = u.onerror = () => reading = false; speechSynthesis.speak(u); } catch (e) {} }
+function stopReading() { reading = false; try { speechSynthesis.cancel(); } catch (e) {} }
+let lock = null;
+async function keepAwake(on) { try { if (on && !lock && navigator.wakeLock) lock = await navigator.wakeLock.request('screen'); if (!on && lock) { await lock.release(); lock = null; } } catch (e) {} }
+
+/* ---------- finish: log the meal, mark used-up items ---------- */
+function finishCooking() {
+  keepAwake(false);
+  $('doneMsg').textContent = cur.title;
+  $('bLogMeal').disabled = false; $('bLogMeal').textContent = 'Log this meal';
+  replace({ screen: 'done' }); show('done', 'bLogMeal');
+}
+$('bLogMeal').onclick = async () => {
+  $('bLogMeal').disabled = true; $('bLogMeal').textContent = 'Logging…';
+  try {
+    // Stronger Humans estimates the numbers from the recipe, same as a spoken meal.
+    const per = cur.servings > 1 ? ` (1 of ${cur.servings} servings)` : '';
+    const text = `${cur.title}${per}: ` + cur.ingredients.map(g => `${g.amount ? g.amount + ' ' : ''}${g.name}`).join(', ');
+    const d = await call('sh-meal', { text, source: 'spoken', meal: cap(cur.meal), date: localDate(), time: localTime(), note: 'Kitchen recipe' });
+    $('bLogMeal').textContent = `✓ Logged · ${Math.round(d.meal.protein_g)} g protein`;
+    $('bUsed').focus();
+  } catch (e) { $('bLogMeal').disabled = false; $('bLogMeal').textContent = 'Not logged. Try again'; $('doneMsg').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+};
+let usedSel = {};
+$('bUsed').onclick = () => {
+  // Offer the recipe's pantry items that are on the list.
+  const pan = (kit && kit.pantry.items) || [];
+  const opts = cur.ingredients.filter(g => g.have).map(g => pan.find(p => norm(p.item) === norm(g.name) || norm(p.item).includes(norm(g.name)) || norm(g.name).includes(norm(p.item)))).filter(Boolean);
+  const uniq = [...new Map(opts.map(p => [p.item, p])).values()];
+  usedSel = {};
+  $('usedList').innerHTML = uniq.length ? uniq.map((p, i) => `<button id="u_${i}" data-item="${esc(p.item)}">${esc(p.item)}</button>`).join('') : '<div class="msg" style="grid-column:1/-1">None of this recipe\'s items are on your pantry list.</div>';
+  uniq.forEach((p, i) => $('u_' + i).onclick = () => { usedSel[p.item] = !usedSel[p.item]; $('u_' + i).classList.toggle('on', usedSel[p.item]); $('u_' + i).textContent = (usedSel[p.item] ? '✕ ' : '') + p.item; });
+  go('used', uniq.length ? 'u_0' : 'bUsedSkip');
+};
+$('bUsedSave').onclick = async () => {
+  const gone = Object.keys(usedSel).filter(k => usedSel[k]);
+  if (!gone.length) { history.back(); return; }
+  $('workMsg').innerHTML = '<div class="spin"></div>Updating your pantry…'; show('work');
+  try {
+    const fresh = await call('sh-kitchen');   // latest list, in case the phone changed it
+    const items = fresh.pantry.items.filter(p => !gone.includes(p.item));
+    await call('sh-pantry-save', { items: JSON.stringify(items) });
+    fresh.pantry.items = items; kit = fresh; store.set('kitchen.last', kit);
+    $('workMsg').innerHTML = `<b>Removed ${gone.length}</b><br>${esc(gone.join(', '))}`;
+  } catch (e) { $('workMsg').innerHTML = `<span class="err">Not saved: ${esc(e.message)}</span>`; }
+  setTimeout(() => { replace({ screen: 'done' }); show('done', 'bFinish'); }, 1600);
+};
+$('bUsedSkip').onclick = () => history.back();
+$('bFinish').onclick = () => { stopReading(); const d = depth(); if (d > 0) history.go(-d); else { renderHome(); show('home', homeFocus()); } };   // back to Kitchen home
+
+/* ---------- arrow keys: nearest button in that direction ---------- */
+document.addEventListener('keydown', e => {
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (!dir) return;
+  const scr = document.querySelector('.screen.active');
+  const els = scr ? [...scr.querySelectorAll('button')].filter(b => !b.disabled && b.offsetParent !== null) : [];
+  if (!els.length) return;
+  e.preventDefault();
+  const curEl = els.includes(document.activeElement) ? document.activeElement : null;
+  if (!curEl) { els[0].focus(); return; }
+  const r = curEl.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const cand = els.filter(b => b !== curEl).map(b => {
+    const q = b.getBoundingClientRect(), dx = q.left + q.width / 2 - cx, dy = q.top + q.height / 2 - cy;
+    const along = dx * dir[0] + dy * dir[1], perp = Math.abs(dx * dir[1] + dy * dir[0]);
+    return { b, along, perp, score: along + 4 * perp };
+  }).filter(c => c.along > 1);
+  const pool = cand.some(c => c.perp <= c.along) ? cand.filter(c => c.perp <= c.along) : cand;
+  pool.sort((a, b) => a.score - b.score);
+  if (pool[0]) pool[0].b.focus();
+});
+
+/* ---------- voice tools for Meta AI (WebMCP) ---------- */
+(() => {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || !mc.registerTool) return;
+  const reply = text => ({ content: [{ type: 'text', text }] });
+  const need = () => screen === 'step' && cur;
+  const tools = [
+    { name: 'next_step', description: 'Kitchen: go to the next cooking step and read it.', inputSchema: { type: 'object', properties: {} },
+      execute: async () => { if (!need()) return reply('No recipe is open.'); nextStep(); if (screen !== 'step') return reply('That was the last step. Done!'); speak(cur.steps[at].text); return reply(`Step ${at + 1}: ${cur.steps[at].text}`); } },
+    { name: 'previous_step', description: 'Kitchen: go back one cooking step.', inputSchema: { type: 'object', properties: {} },
+      execute: async () => { if (!need()) return reply('No recipe is open.'); prevStep(); return reply(`Step ${at + 1}: ${cur.steps[at].text}`); } },
+    { name: 'read_step', description: 'Kitchen: read the current cooking step aloud.', inputSchema: { type: 'object', properties: {} },
+      execute: async () => { if (!need()) return reply('No recipe is open.'); speak(cur.steps[at].text); return reply(cur.steps[at].text); } },
+    { name: 'start_timer', description: 'Kitchen: start a cooking timer for a number of minutes.', inputSchema: { type: 'object', properties: { minutes: { type: 'number' }, label: { type: 'string' } }, required: ['minutes'] },
+      execute: async ({ minutes, label }) => { const m = Math.max(0.5, Math.min(240, Number(minutes) || 0)); startTimer(m, label || `${m} min`, -1); return reply(`Timer set for ${m} minutes.`); } },
+    { name: 'list_recipes', description: "Kitchen: list this week's recipes for breakfast, lunch or dinner.", inputSchema: { type: 'object', properties: { meal: { type: 'string', enum: MEALS } } },
+      execute: async ({ meal } = {}) => { const m = meal || mealNow(); const l = (kit && kit.recipes[m]) || []; if (!l.length) return reply(`No ${m} recipes yet.`); openMeal(m); return reply(l.map((r, i) => `${i + 1}. ${r.title}, ${r.minutes} minutes, ${r.protein_g} grams protein`).join('. ')); } },
+  ];
+  for (const t of tools) { try { mc.registerTool(t); } catch (e) {} }
+})();
+
+/* ---------- start ---------- */
+history.replaceState({ screen: 'home', depth: 0 }, '');
+load();
+</script>
+</body>
+</html>
