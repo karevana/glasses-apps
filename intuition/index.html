@@ -62,6 +62,19 @@
   .deg.on, .seq.single .deg { opacity: 1; }
   .deg.on b { color: var(--focus); }
   .deg b .oc { font-style: normal; font-size: .38em; vertical-align: middle; color: var(--dim); }
+  /* chord display: current chord big, next chord to the right (yellow on the last beat before it changes) */
+  .chordbox { display: flex; align-items: center; justify-content: center; gap: calc(var(--u) * 3); }
+  .chordbox .cc { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+  .chordbox .cc b { font-size: calc(var(--u) * 12); font-weight: 900; color: var(--create); }
+  .chordbox .cc small { font-size: calc(var(--u) * 4); color: var(--dim); font-weight: 700; margin-top: calc(var(--u) * .6); }
+  .chordbox .cc.on b { color: var(--focus); }
+  .chordbox .row .cc b { font-size: calc(var(--u) * 9); }
+  .chordbox .row { display: flex; gap: calc(var(--u) * 3.5); }
+  .chordbox .nx { font-size: calc(var(--u) * 6.5); color: var(--dim); font-weight: 800; }
+  .chordbox .nx.soon { color: var(--focus); }
+  .chordbox em { font-style: normal; font-size: calc(var(--u) * 3.4); color: var(--dim); }
+  .stage.compact .chordbox .cc b { font-size: calc(var(--u) * 8.5); }
+  .stage.compact .chordbox .row .cc b { font-size: calc(var(--u) * 7); }
   .wk { color: var(--accent); font-size: calc(var(--u) * 3.6); font-weight: 800; letter-spacing: .05em; margin-top: calc(var(--u) * 1.2); }
   .deg b { font-size: calc(var(--u) * 14); line-height: 1; font-weight: 900; }
   .seq.single .deg b { font-size: calc(var(--u) * 20); }
@@ -123,6 +136,7 @@
   <div class="prow"><span class="phase" id="lPhase"></span><span class="inst" id="lInst"></span><span class="clock" id="lClock"></span></div>
   <div class="bar"><i id="lBar"></i></div>
   <div class="stage" id="lStage">
+    <div class="chordbox hidden" id="lChord"></div>
     <div class="seq" id="lSeq"></div>
     <div class="rhythm hidden" id="lRhythm"></div>
     <div class="fing hidden" id="lFing"></div>
@@ -166,8 +180,9 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
 };
 const DEFAULT_PROFILE = { v: 1, current: 'W01D01', instrument: 'guitar', minutes: 30, key: '', soundHigh: false, cues: false,
-  done: {}, history: [], ear: {}, reflections: [] };
+  done: {}, history: [], ear: {}, chords: {}, reflections: [] };
 let P = Object.assign({}, DEFAULT_PROFILE, store.get('intuition.profile', {}));
+P.chords = P.chords || {};
 const saveP = () => store.set('intuition.profile', P);
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const lessonById = id => LESSONS.find(l => l.lesson_id === id) || LESSONS[0];
@@ -178,7 +193,7 @@ const nextLessonOf = l => LESSONS[LESSONS.indexOf(l) + 1] || null;
    Guitar shows concert names. Tenor sax shows written names: written = concert + major 9th
    (pitch class +2). Notes are spelled by letter so D major shows F♯ and C♯, not G♭ and D♭.
    ====================================================================== */
-const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const MAJOR = [0, 2, 4, 5, 7, 9, 11], NAT_MINOR = [0, 2, 3, 5, 7, 8, 10];
 const LETTERS = 'CDEFGAB', LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
 const PCS = { C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5, 'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11 };
 const KEY_LIST = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
@@ -187,20 +202,65 @@ const ACC = { '-2': '𝄫', '-1': '♭', '0': '', '1': '♯', '2': '𝄪' };
 const pretty = k => k[0] + k.slice(1).replace('#', '♯').replace('b', '♭');
 
 let L = null;   // the lesson in progress (see startLesson)
-const concertKey = () => P.key || (L ? L.lesson.concert_key : lessonById(P.current).concert_key) || 'C';
+const curLesson = () => L ? L.lesson : lessonById(P.current);
+const concertKey = () => P.key || curLesson().concert_key || 'C';
 const keyFor = inst => inst === 'sax' ? SAX_KEY[concertKey()] : concertKey();
-const degSemis = d => { const i = d - 1; return MAJOR[((i % 7) + 7) % 7] + 12 * Math.floor(i / 7); };
-function spell(key, d) {
-  const i = ((d - 1) % 7 + 7) % 7, li = (LETTERS.indexOf(key[0]) + i) % 7;
-  const target = (PCS[key] + MAJOR[i]) % 12;
-  const acc = (((target - LETTER_PC[li]) % 12) + 18) % 12 - 6;
-  return LETTERS[li] + ACC[acc];
+const isMinorish = () => /minor|blues/.test(curLesson().scale || '');
+const keyLabel = () => `${pretty(concertKey())}${/blues/.test(curLesson().scale || '') ? ' blues' : isMinorish() ? ' minor' : ''}`;
+
+/* Degrees are always counted against the MAJOR scale of home, so one system covers every lesson:
+   a number (1–7; 0 = 7 below home; 8 = home an octave up; 9 = 2 above, …) or a string with an accidental:
+   'b3', 'b6', 'b7' (minor), 'b5' (blue note), '#4'. Minor keys are written 1 2 ♭3 4 5 ♭6 ♭7. */
+function parseDeg(d) {
+  if (typeof d === 'number') return { n: d, a: 0 };
+  const m = String(d).match(/^([b#♭♯]*)(-?\d+)$/); if (!m) return { n: 1, a: 0 };
+  return { n: +m[2], a: [...m[1]].reduce((s, c) => s + (c === 'b' || c === '♭' ? -1 : 1), 0) };
 }
+const degNum = d => parseDeg(d).n;
+const degSemis = d => { const { n, a } = parseDeg(d), i = n - 1; return MAJOR[((i % 7) + 7) % 7] + 12 * Math.floor(i / 7) + a; };
+// Spell a note by letter: `steps` letters above the key's letter, `semis` semitones above the key's tonic.
+function spellAt(key, steps, semis) {
+  const li = ((LETTERS.indexOf(key[0]) + steps) % 7 + 7) % 7, target = ((PCS[key] + semis) % 12 + 12) % 12;
+  return LETTERS[li] + ACC[(((target - LETTER_PC[li]) % 12) + 18) % 12 - 6];
+}
+function spell(key, d) { const { n, a } = parseDeg(d), i = ((n - 1) % 7 + 7) % 7; return spellAt(key, i, MAJOR[i] + a); }
 const noteName = (d, inst) => spell(keyFor(inst), d);
-// 1–7 as numbers; ▾ = below home, ▴ = above (degree 0 is 7 below, 8 is home an octave up)
-const degLabel = d => { const b = ((d - 1) % 7 + 7) % 7 + 1; return d < 1 ? `${b}<i class="oc">▾</i>` : d > 7 ? `${b}<i class="oc">▴</i>` : String(b); };
+// Label for the screen: ♭3, 7▾ (below home), 1▴ (above)
+const degLabel = d => {
+  const { n, a } = parseDeg(d), b = ((n - 1) % 7 + 7) % 7 + 1, base = (a < 0 ? '♭'.repeat(-a) : '♯'.repeat(a)) + b;
+  return n < 1 ? `${base}<i class="oc">▾</i>` : n > 7 ? `${base}<i class="oc">▴</i>` : base;
+};
+const degText = d => degLabel(d).replace(/<[^>]+>/g, '');
 const tonicMidi = () => 48 + PCS[concertKey()];          // concert C3..B3: inside both guitar and tenor sax range
 const degMidi = d => tonicMidi() + degSemis(d);
+// semitones above home -> degree label (flats for anything outside the major scale: ♭2 ♭3 ♭5 ♭6 ♭7)
+function semisToDeg(s) { s = ((s % 12) + 12) % 12; const i = MAJOR.indexOf(s); if (i >= 0) return i + 1; return 'b' + (MAJOR.indexOf(s + 1) + 1); }
+
+/* Chords from Roman numerals, relative to home: I ii iii IV V vi vii°, V7, Imaj7, ii7, I7 (blues), viiø7, bVII…
+   Upper case = major, lower case = minor, ° = diminished, 7 = seventh (dominant on a major numeral).
+   In minor and blues lessons the numeral roots come from the natural minor scale (i iv v III VI VII; V7 = harmonic-minor dominant). */
+const QUAL = { maj: [[0, 4, 7], '', 'major'], min: [[0, 3, 7], 'm', 'minor'], dim: [[0, 3, 6], '°', 'diminished'],
+  dom7: [[0, 4, 7, 10], '7', 'dominant 7th'], min7: [[0, 3, 7, 10], 'm7', 'minor 7th'], maj7: [[0, 4, 7, 11], 'maj7', 'major 7th'], m7b5: [[0, 3, 6, 10], 'm7♭5', 'half-diminished'] };
+const NUMS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+function parseChord(sym) {
+  const m = String(sym).match(/^([b#♭♯]?)(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)(°|ø)?(maj7|7)?$/);
+  if (!m) return parseChord('I');
+  const idx = NUMS.indexOf(m[2].toUpperCase()), upper = m[2] === m[2].toUpperCase(), scale = isMinorish() ? NAT_MINOR : MAJOR;
+  const acc = /b|♭/.test(m[1]) ? -1 : /#|♯/.test(m[1]) ? 1 : 0;
+  let q = upper ? 'maj' : 'min';
+  if (m[3] === '°') q = 'dim'; if (m[3] === 'ø') q = 'm7b5';
+  if (m[4] === '7') q = q === 'maj' ? 'dom7' : q === 'min' ? 'min7' : 'm7b5';
+  if (m[4] === 'maj7') q = 'maj7';
+  return { sym: String(sym), idx, root: scale[idx] + acc, q };
+}
+const chordName = (sym, inst) => { const c = parseChord(sym); return spellAt(keyFor(inst), c.idx, c.root) + QUAL[c.q][1]; };
+const chordQuality = sym => QUAL[parseChord(sym).q][2];
+const chordSemis = sym => { const c = parseChord(sym); return QUAL[c.q][0].map(iv => c.root + iv); };
+const chordDegs = sym => chordSemis(sym).map(semisToDeg);            // e.g. IV -> [4, 6, 1]
+const romanLabel = sym => String(sym).replace('b', '♭').replace('#', '♯');
+// Close voicing in one octave band above home (smooth voice leading for free), plus a bass note.
+const voiceChord = sym => { const base = tonicMidi() + 7; return chordSemis(sym).map(s => base + ((((tonicMidi() + s) - base) % 12) + 12) % 12).sort((a, b) => a - b); };
+const bassNote = (sym, iv = 0) => { const pc = (tonicMidi() + parseChord(sym).root + iv) % 12; return 40 + ((pc - 4 + 12) % 12); };   // E2..D#3
 
 /* Fingering help. Guitar: standard tuning positions. Tenor sax: written-pitch fingerings (same for all saxes). */
 const GTR = [[40, '6th string'], [45, '5th string'], [50, '4th string'], [55, '3rd string'], [59, '2nd string'], [64, '1st string']];
@@ -301,35 +361,82 @@ function droneOff(fast) {
   d.oscs.forEach(o => { try { o.stop(c.currentTime + (fast ? 0.4 : 2.5)); } catch (e) {} });
 }
 
-// One-chord backing band (pad + bass + soft drums), scheduled a little ahead from the tick loop.
-function backingStart(bpm) {
+/* The band. opts: { progression: ['I','IV','V','I'] or [{sym, beats}], beats_per_chord (default 4), style }
+   styles: 'pop' (straight eighths), 'ballad' (soft, sustained), 'shuffle' (blues, swung eighths, boogie bass).
+   Counts in with 4 clicks, then loops the progression. Notes are scheduled ~0.35 s ahead from the 100 ms tick. */
+const bandOpts = ex => ex.backing === 'vamp' ? { progression: ['I'], style: 'pop' } : (ex.backing && typeof ex.backing === 'object' ? ex.backing : null);
+function backingStart(bpm, opts = {}) {
   audio(); backingStop(); const c = A.ac, t = c.currentTime + 0.1, spb = 60 / bpm;
   const g = c.createGain(); g.gain.value = 1; g.connect(A.out);
-  const pg = c.createGain(), lp = c.createBiquadFilter(); pg.gain.value = 0.0001; lp.type = 'lowpass'; lp.frequency.value = 900; lp.connect(pg); pg.connect(g);
-  const pad = [0, 4, 7, 12].map(s => { const o = c.createOscillator(), gg = c.createGain(); o.type = 'sawtooth'; o.frequency.value = mtof(tonicMidi() + 12 + s + shift()); gg.gain.value = 0.05; o.connect(gg); gg.connect(lp); o.start(); return o; });
   for (let i = 0; i < 4; i++) click(t + i * spb, i === 0, g);     // count-in
-  pg.gain.setTargetAtTime(0.5, t + 4 * spb, 0.8);
-  A.backing = { bpm, spb, start: t + 4 * spb, next: t + 4 * spb, i: 0, g, pad, drums: true };
+  let at = 0;
+  const prog = (opts.progression || ['I']).map(x => { const p = typeof x === 'string' ? { sym: x, beats: opts.beats_per_chord || 4 } : Object.assign({ beats: 4 }, x); p.at = at; at += p.beats; return p; });
+  const style = opts.style || 'pop';
+  A.backing = { bpm, spb, start: t + 4 * spb, next: t + 4 * spb, i: 0, g, prog, loop: at, style, swing: style === 'shuffle' || !!opts.swing, drums: opts.drums !== false };
+}
+function chordAt(b, beatIdx) {
+  const x = ((beatIdx % b.loop) + b.loop) % b.loop, k = b.prog.findIndex(p => x >= p.at && x < p.at + p.beats);
+  return { k, p: b.prog[k], next: b.prog[(k + 1) % b.prog.length], inChord: x - b.prog[k].at, bar: Math.floor(x / 4) + 1, bars: Math.ceil(b.loop / 4) };
+}
+function padChord(sym, t, dur, dest, vol) {
+  const c = A.ac;
+  voiceChord(sym).forEach(m => {
+    const o = c.createOscillator(), o2 = c.createOscillator(), lp = c.createBiquadFilter(), g = c.createGain();
+    o.type = 'sawtooth'; o2.type = 'triangle'; o.frequency.value = o2.frequency.value = mtof(m + shift()); o.detune.value = 6;
+    lp.type = 'lowpass'; lp.frequency.value = 1300; o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(dest);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.08); g.gain.setTargetAtTime(0.0001, t + Math.max(0.2, dur - 0.08), 0.06);
+    [o, o2].forEach(x => { x.start(t); x.stop(t + dur + 0.4); reg(x); });
+  });
 }
 function backingTick(tn) {
   const b = A.backing; if (!b) return;
   while (b.next < tn + 0.35) {
-    const beat = b.i % 4, t = b.next;
-    if (b.drums) {
-      if (beat === 0 || beat === 2) kick(t, b.g);
-      if (beat === 1 || beat === 3) noise(t, 0.12, 1800, 'bandpass', 0.18, b.g);
-      noise(t, 0.04, 7000, 'highpass', 0.06, b.g); noise(t + b.spb / 2, 0.04, 7000, 'highpass', 0.04, b.g);
+    const t = b.next, spb = b.spb, beat = b.i % 4, ch = chordAt(b, b.i), sym = ch.p.sym, off = b.swing ? spb * 2 / 3 : spb / 2;
+    if (b.style === 'shuffle') {
+      if (beat === 1 || beat === 3) { padChord(sym, t, spb * 0.45, b.g, 0.05); padChord(sym, t + off, spb * 0.3, b.g, 0.035); }   // comping stabs
+      const q = parseChord(sym).q, walk = [0, q === 'min' || q === 'min7' ? 3 : 4, 7, 9][beat];                                // boogie bass
+      pluck(bassNote(sym, walk), t, spb * 0.9, 0.34, b.g);
+    } else {
+      if (ch.inChord === 0) padChord(sym, t, ch.p.beats * spb, b.g, b.style === 'ballad' ? 0.035 : 0.045);
+      if (beat === 0 || ch.inChord === 0) pluck(bassNote(sym), t, spb * (b.style === 'ballad' ? 3.6 : 1.7), 0.34, b.g);
+      else if (beat === 2 && b.style !== 'ballad') pluck(bassNote(sym, 7), t, spb * 1.7, 0.3, b.g);
     }
-    if (beat === 0 || beat === 2) pluck(tonicMidi() + (beat === 2 ? 7 : 0), t, b.spb * 1.6, 0.32, b.g);
-    b.next += b.spb; b.i++;
+    if (b.drums) {
+      if (b.style === 'ballad') {
+        if (beat === 0) kick(t, b.g); if (beat === 2) noise(t, 0.08, 2500, 'bandpass', 0.07, b.g);
+        noise(t, 0.05, 8000, 'highpass', 0.035, b.g);
+      } else {
+        if (beat === 0 || beat === 2) kick(t, b.g);
+        if (beat === 1 || beat === 3) noise(t, 0.12, 1800, 'bandpass', 0.16, b.g);
+        noise(t, 0.04, 7000, 'highpass', 0.06, b.g); noise(t + off, 0.04, 7000, 'highpass', b.swing ? 0.05 : 0.04, b.g);
+      }
+    }
+    b.next += spb; b.i++;
   }
 }
 function backingStop() {
-  const b = A.backing; if (!b) return; A.backing = null; const c = A.ac;
-  b.g.gain.setTargetAtTime(0.0001, c.currentTime, 0.1); b.pad.forEach(o => { try { o.stop(c.currentTime + 0.8); } catch (e) {} });
+  const b = A.backing; if (!b) return; A.backing = null;
+  b.g.gain.setTargetAtTime(0.0001, A.ac.currentTime, 0.1);
   setTimeout(() => { try { b.g.disconnect(); } catch (e) {} }, 1200);
 }
 const backingBeat = tn => { const b = A.backing; if (!b) return null; const from = tn < b.start ? b.start - 4 * b.spb : b.start; return { n: 4, i: Math.max(0, Math.floor((tn - from) / b.spb)) % 4 }; };
+// What the band is playing now (for the chord display). During the count-in it shows the first chord.
+function bandNow(tn) {
+  const b = A.backing; if (!b) return null;
+  const bi = Math.floor((tn - b.start) / b.spb), ch = chordAt(b, Math.max(0, bi));
+  // next DIFFERENT chord (the 12-bar blues repeats I7 for four bars) and how many beats until it arrives
+  let left = ch.p.beats - ch.inChord, k = ch.k, nxt = ch.next;
+  for (let j = 0; j < b.prog.length && nxt.sym === ch.p.sym; j++) { k = (k + 1) % b.prog.length; left += b.prog[k].beats; nxt = b.prog[(k + 1) % b.prog.length]; }
+  const single = b.prog.every(p => p.sym === b.prog[0].sym);
+  return { cur: ch.p.sym, next: nxt.sym, bar: ch.bar, bars: ch.bars, left: bi < 0 ? 99 : left, single };
+}
+// A strummed chord (for listening and recognition): bass + quick strum, optional arpeggio after.
+function strum(sym, t, dur, arp) {
+  pluck(bassNote(sym), t, dur, 0.3);
+  voiceChord(sym).forEach((m, i) => pluck(m, t + 0.025 * i, dur, 0.26));
+  if (arp) voiceChord(sym).forEach((m, i) => pluck(m, t + dur + i * arp, arp * 0.95, 0.4));
+  return dur + (arp ? voiceChord(sym).length * arp : 0);
+}
 
 // Optional spoken cues (off by default — they compete with the drone).
 function cue(text) { if (!P.cues || !window.speechSynthesis) return; try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = 1; speechSynthesis.speak(u); } catch (e) {} }
@@ -344,44 +451,118 @@ const F = () => (P.minutes || 30) / 30;                                    // se
 const scaleSec = s => Math.max(20, Math.round((s || 60) * F()));
 const scaleN = n => Math.max(1, Math.round((n || 1) * F()));
 const tempo = () => (L ? L.lesson.tempo_bpm || 65 : 65) * S.tempoMul;
-const PLAYING = ['warmup', 'find_note', 'rhythm_echo', 'question_answer', 'play_rest', 'listen_sing_play', 'random_note_recognition', 'free_improvisation'];
+const PLAYING = ['warmup', 'find_note', 'rhythm_echo', 'question_answer', 'play_rest', 'chord_tones', 'listen_sing_play', 'random_note_recognition', 'free_improvisation'];
 function instFor(ex, el, dur) {
   if (ex._split) return el < dur / 2 ? 'guitar' : 'sax';
   return ex._inst || null;
 }
 function textFor(p, inst) { return (inst && p[inst]) || p.text || p.guitar || ''; }
 function fill(s, inst) {
-  return String(s || '').replace(/\{n(\d)\}/g, (m, d) => inst ? noteName(+d, inst) : `${noteName(+d, 'guitar')} (sax ${noteName(+d, 'sax')})`)
+  return String(s || '').replace(/\{n([b#]?-?\d+)\}/g, (m, d) => inst ? noteName(d, inst) : `${noteName(d, 'guitar')} (sax ${noteName(d, 'sax')})`)
+    .replace(/\{c([^}]+)\}/g, (m, sym) => inst ? chordName(sym, inst) : `${chordName(sym, 'guitar')} (sax ${chordName(sym, 'sax')})`)
     .replace(/\{inst\}/g, inst === 'sax' ? 'sax' : inst === 'guitar' ? 'guitar' : 'your instrument');
 }
+/* Chord display for exercises with a band. ex.chord_display: 'full' (now + next, default) | 'current' | 'hidden'
+   | 'fade' (first third full, middle third current only, last third hidden — "gradually hide the chord display"). */
+function chordUI(ex, t, frac) {
+  const bn = bandNow(t); if (!bn) return null;
+  let mode = ex.chord_display || 'full';
+  if (mode === 'fade') mode = frac < 1 / 3 ? 'full' : frac < 2 / 3 ? 'current' : 'hidden';
+  if (bn.single && mode === 'full') mode = 'current';
+  return { cur: bn.cur, next: mode === 'full' ? bn.next : null, soon: mode === 'full' && bn.left <= 1, bar: bn.bars > 1 ? `bar ${bn.bar} of ${bn.bars}` : '', hidden: mode === 'hidden' };
+}
+// Chord-tone targets: 'root' | 'third' | 'fifth' | 'seventh' | 'tones' (all of them) for the chord now playing
+const TARGET = { root: 0, third: 1, fifth: 2, seventh: 3 };
+function targetDegs(target, sym) { const d = chordDegs(sym); if (target === 'tones') return d; return [d[Math.min(TARGET[target] || 0, d.length - 1)]]; }
 
+/* Timed prompts that rotate (warmup, drone_listening, find_note, free_improvisation, chord_tones).
+   Prompt fields: phase, text/guitar/sax, seconds, play: [degrees] or 'm1', chord: 'IV' or chords: ['V7','I'] (strummed, tones shown),
+   arp: true (arpeggiate after the strum), target: 'root'|'third'|'fifth'|'seventh'|'tones' (over the band). */
 function PromptRunner(ex) {
-  const r = { ui: {} }, dur = scaleSec(ex.duration_seconds), ps = ex.prompt_seconds || 30;
+  const r = { ui: {} }, dur = scaleSec(ex.duration_seconds), ps = ex.prompt_seconds || 30, band = bandOpts(ex);
   const prompts = ex.prompts && ex.prompts.length ? ex.prompts : [{ phase: 'LISTEN', text: ex.text || '' }];
   const lens = prompts.map(p => p.seconds || ps), cycle = lens.reduce((a, b) => a + b, 0);
   r.begin = () => {
     newBus(); r.t0 = now(); r.idx = -1; r.lastInst = null;
-    if (ex.backing === 'vamp') { droneOff(); backingStart(tempo()); } else { backingStop(); if (ex.drone) droneOn(ex.drone_level); else droneOff(); }
+    if (band) { droneOff(); backingStart(tempo(), band); } else { backingStop(); if (ex.drone) droneOn(ex.drone_level); else droneOff(); }
   };
   r.update = t => {
     const el = t - r.t0; if (el >= dur) return true;
     let x = el % cycle, k = 0; while (x >= lens[k]) { x -= lens[k]; k++; }
-    const inst = instFor(ex, el, dur), p = prompts[k];
-    if (k !== r.idx) { r.idx = k; if (p.play) playAny(p.play, t + 0.05); cue(fill(textFor(p, inst), inst)); }
+    const inst = instFor(ex, el, dur), p = prompts[k], chordsHere = p.chords || (p.chord ? [p.chord] : null);
+    if (k !== r.idx) {
+      r.idx = k; cue(fill(textFor(p, inst), inst));
+      if (p.play) playAny(p.play, t + 0.05);
+      if (chordsHere) { const spb = 60 / tempo(); let tt = t + 0.05; chordsHere.forEach(sym => { tt += strum(sym, tt, spb * 2, p.arp ? spb / 2 : 0) + 0.1; }); }
+    }
     let text = fill(textFor(p, inst), inst);
     if (ex._split && el >= dur / 2 && el < dur / 2 + 8) text = 'Switch to tenor sax 🎷 — same idea, new instrument.';
     if (ex._split && inst !== r.lastInst) { if (r.lastInst) cue('Switch to sax'); r.lastInst = inst; }
-    r.ui = { phase: p.phase || 'LISTEN', inst, text, degs: ex.degrees || (ex.type === 'warmup' ? null : [1]), hidden: !!ex.hide_degrees,
+    let degs = p.degs || ex.degrees || (ex.type === 'warmup' ? null : [1]), hidden = !!ex.hide_degrees, chord = null, chordRow = null;
+    if (chordsHere) { chordRow = chordsHere.map(sym => ({ sym })); if (!p.degs) degs = chordDegs(chordsHere[chordsHere.length - 1]); }
+    if (band) {
+      chord = chordUI(ex, t, el / dur);
+      const tg = p.target || ex.target;
+      if (chord && (tg || ex.chord_tones)) { degs = targetDegs(tg || 'tones', chord.cur); hidden = hidden || chord.hidden; }
+    }
+    r.ui = { phase: p.phase || 'LISTEN', inst, text, degs, hidden, chord, chordRow,
       remain: dur - el, total: dur, beat: backingBeat(t), ctx: ex.confirm ? [['ok', ex.confirm]] : null, fingAuto: !!ex.show_fingering };
     return false;
   };
-  r.action = a => { if (a === 'ok') return 'next'; if (a === 'repeat') r.begin(); if (a === 'hint') S.showFing = true; };
+  r.action = a => { if (a === 'ok') return 'next'; if (a === 'repeat') { r.begin(); } if (a === 'hint') S.showFing = true; };
+  return r;
+}
+
+/* Chord ear training. Plays the home chord (I) first for context, then the chord(s) to name; hidden until Reveal.
+   ex.chords: pool of numerals to pick from; ex.answer: 'numeral' (default) or 'quality' (major / minor / diminished);
+   ex.progressions: [['I','IV','V','I'], …] to name a whole progression instead. Self-marked; accuracy kept in P.chords. */
+function ChordRecogRunner(ex) {
+  const r = { ui: {} }, quality = ex.answer === 'quality', pool = ex.chords || ['I', 'IV', 'V'], progs = ex.progressions || null;
+  const n = scaleN(ex.trials || 10); let i = 0, stage = 'play', item = ['I'], prev = '', hinted = false;
+  function gen() {
+    let x, k = 0;
+    do { x = progs ? progs[Math.floor(Math.random() * progs.length)] : [pool[Math.floor(Math.random() * pool.length)]]; k++; }
+    while (x.join() === prev && k < 12 && (progs || pool).length > 1);
+    prev = x.join(); return x;
+  }
+  function play(context) {
+    newBus(); const spb = 60 / tempo(); let t = now() + 0.15;
+    if (context) t += strum(progs ? 'I' : 'I', t, spb * 2) + spb * 0.6;
+    r.ps = t; r.each = spb * 2;
+    const len = progs ? (item.forEach((sym, k) => strum(sym, t + k * r.each, r.each * 0.95)), item.length * r.each) : strum(item[0], t, spb * 2, spb / 2.5);
+    r.pe = t + len + 0.3; stage = 'play';
+  }
+  r.begin = () => { backingStop(); droneOff(); i = 0; item = gen(); play(ex.context !== false); };
+  r.update = t => {
+    if (stage === 'play' && t >= r.pe) stage = 'answer';
+    const active = stage === 'play' && progs && t >= r.ps ? Math.min(item.length - 1, Math.floor((t - r.ps) / r.each)) : -1;
+    let text = { play: progs ? 'Home chord, then listen to the changes…' : 'Home chord, then the mystery chord…',
+      answer: quality ? 'Major, minor or diminished? Decide, then reveal.' : progs ? 'Which chords? Say the numbers in your head, then reveal.' : `Which one? ${pool.map(romanLabel).join(' · ')}`,
+      shown: 'Were you right?' }[stage];
+    if (hinted && stage !== 'shown') text += quality ? ' (major = bright, minor = darker, diminished = tense)' : '';
+    r.ui = { phase: stage === 'shown' ? 'CHECK' : 'LISTEN', inst: instFor(ex, 0, 1), text, degs: null, beat: null,
+      chordRow: item.map((sym, k) => ({ sym, on: k === active })), chordHidden: stage !== 'shown', quality,
+      ctx: stage === 'answer' ? [['reveal', '👁 Reveal'], ['replay', '↻ Hear again']] : stage === 'shown' ? [['right', '✓ I had it'], ['miss', '✗ Missed it']] : null,
+      item: `${i + 1} of ${n}` };
+    return false;
+  };
+  r.action = a => {
+    if (a === 'reveal') stage = 'shown';
+    else if (a === 'replay' || a === 'repeat') play(ex.context !== false);
+    else if (a === 'hint') { hinted = true; play(true); }
+    else if (a === 'right' || a === 'miss') {
+      const key = progs ? 'progressions' : quality ? chordQuality(item[0]) : romanLabel(item[0]), e = P.chords[key] || [0, 0];
+      e[1]++; if (a === 'right') e[0]++; P.chords[key] = e; saveP();
+      i++; if (i >= n) return 'next';
+      item = gen(); hinted = false; play(ex.context !== false);
+    }
+  };
   return r;
 }
 
 /* Phrase helpers. An item is { degs: [...], durs: [beats...] }.
    Degree 0 = 7 below home, -1 = 6 below home, 8 = home an octave up (degSemis handles any octave). */
-const asItem = x => Array.isArray(x) ? { degs: x, durs: x.map(() => 1) } : x;
+const asItem = x => Array.isArray(x) ? { degs: x, durs: x.map(() => 1) } : Object.assign({ durs: x.degs.map(() => 1) }, x);   // {degs, durs?, chord?}
 function genDurs(n, total) {
   const opts = [0.5, 1, 1, 1, 1.5, 2], durs = [];
   if (!total) { for (let k = 0; k < n; k++) durs.push(opts[Math.floor(Math.random() * opts.length)]); return durs; }
@@ -396,15 +577,15 @@ function genDurs(n, total) {
 }
 // A melodic walk through the allowed degrees: small leaps, optional repeated notes, optional ending on home.
 function genPhrase(spec, n) {
-  const pool = (spec.degrees || [1, 2, 3, 4, 5, 6, 7]).slice().sort((a, b) => a - b), len = n || spec.length || 3, leap = spec.max_leap || 4;
+  const pool = (spec.degrees || [1, 2, 3, 4, 5, 6, 7]).slice().sort((a, b) => degSemis(a) - degSemis(b)), len = n || spec.length || 3, leap = spec.max_leap || 4;
   let degs, tries = 0;
   do {
     degs = []; let cur = pool.includes(1) && Math.random() < 0.5 ? 1 : pool[Math.floor(Math.random() * pool.length)];
     for (let k = 0; k < len; k++) {
-      if (k > 0) { const near = pool.filter(d => Math.abs(d - cur) <= leap && (spec.repeat_notes || d !== cur)); if (near.length) cur = near[Math.floor(Math.random() * near.length)]; }
+      if (k > 0) { const near = pool.filter(d => Math.abs(degNum(d) - degNum(cur)) <= leap && (spec.repeat_notes || d !== cur)); if (near.length) cur = near[Math.floor(Math.random() * near.length)]; }
       degs.push(cur);
     }
-    if (spec.end_home && len > 1) { const p = degs[len - 2]; degs[len - 1] = pool.includes(8) && Math.abs(p - 8) < Math.abs(p - 1) ? 8 : 1; }
+    if (spec.end_home && len > 1) { const p = degNum(degs[len - 2]); degs[len - 1] = pool.includes(8) && Math.abs(p - 8) < Math.abs(p - 1) ? 8 : 1; }
     tries++;
   } while (tries < 20 && (degs.join() === spec._prev || (len > 2 && new Set(degs).size < 2)));   // no repeats of the last phrase, no one-note phrases
   spec._prev = degs.join();
@@ -429,13 +610,14 @@ function playText(ex, inst) {
    With backing: 'vamp' the band keeps time (count-in from the band), otherwise drone + clicks. */
 function CallResponseRunner(ex) {
   const r = { ui: {} }, mode = ex.mode || (ex.type === 'rhythm_echo' ? 'echo' : ex.type === 'play_rest' ? 'alternate' : 'answer');
-  const bars = ex.bars || (mode === 'echo' ? 1 : 2), deg = ex.degree || 1, vamp = ex.backing === 'vamp';
+  const bars = ex.bars || (mode === 'echo' ? 1 : 2), deg = ex.degree || 1, band = bandOpts(ex), vamp = !!band;
+  const sw = pos => ex.swing && Math.abs((pos % 1) - 0.5) < 1e-6 ? Math.floor(pos) + 2 / 3 : pos;   // swung eighths
   let rounds = [];
   r.begin = () => {
     newBus(); r.spb = 60 / tempo(); r.roundLen = 2 * bars * 4 * r.spb;
     if (mode === 'echo') { rounds = []; (ex.patterns || [[1, 1, 1, 1]]).forEach(p => { for (let k = 0; k < scaleN(ex.repetitions || 2); k++) rounds.push({ degs: p.filter(d => d > 0).map(() => deg), pat: p }); }); }
     else rounds = Array(Math.max(2, Math.floor(scaleSec(ex.duration_seconds || 300) / r.roundLen))).fill(null);
-    if (vamp) { droneOff(); backingStart(tempo()); r.t0 = A.backing.start - 4 * r.spb; }
+    if (vamp) { droneOff(); backingStart(tempo(), band); r.t0 = A.backing.start - 4 * r.spb; }
     else { backingStop(); if (ex.drone !== false) droneOn(ex.drone_level || 0.1); else droneOff(); r.t0 = now() + 0.15; for (let b = 0; b < 4; b++) click(r.t0 + b * r.spb, b === 0); }
     r.sched = -1; r.dur = 4 * r.spb + rounds.length * r.roundLen;
   };
@@ -453,7 +635,7 @@ function CallResponseRunner(ex) {
     const spb = r.spb, s = r.t0 + 4 * spb + i * r.roundLen, rd = makeRound(i);
     if (!vamp) for (let b = 0; b < 2 * bars * 4; b++) click(s + b * spb, b % 4 === 0);
     let pos = 0, k = 0;
-    rd.pat.forEach(d => { if (d > 0) pluck(degMidi(rd.degs[k++]), s + pos * spb, Math.max(0.15, d * spb * 0.92), 0.5); pos += Math.abs(d); });
+    rd.pat.forEach(d => { if (d > 0) pluck(degMidi(rd.degs[k++]), s + sw(pos) * spb, Math.max(0.15, d * spb * 0.92), 0.5); pos += Math.abs(d); });
   }
   r.update = t => {
     const el = t - r.t0, spb = r.spb, inst = instFor(ex, 0, 1);
@@ -477,7 +659,7 @@ function CallResponseRunner(ex) {
         if (first) { let off = pb; for (let i = 0, k = 0; i < rd.pat.length; i++) { const d = rd.pat[i]; if (off < Math.abs(d)) { if (d > 0) active = k; break; } off -= Math.abs(d); if (d > 0) k++; } }
       }
     }
-    r.ui = { phase, inst, text, degs, active, hidden: !!ex.hide_degrees && mode === 'answer', remain: r.dur - el, total: r.dur,
+    r.ui = { phase, inst, text, degs, active, hidden: !!ex.hide_degrees && mode === 'answer', remain: r.dur - el, total: r.dur, chord: vamp ? chordUI(ex, t, el / r.dur) : null,
       beat: { n: 4, i: Math.max(0, Math.floor(el / spb)) % 4 }, rhythm, item: ri >= 0 ? `${ri + 1} of ${rounds.length}` : '' };
     return false;
   };
@@ -503,7 +685,9 @@ function PhraseRunner(ex) {
     const beats = item.durs.reduce((a, b) => a + b, 0), resp = ex.response_seconds || Math.max(4, beats * spb + 2);
     let t = now() + 0.15; const st = [];
     const add = (name, l) => { st.push({ name, end: t + l }); t += l; };
-    const t0 = t; pluck(degMidi(1), t, spb * 0.9, 0.3); add('home', 2 * spb);
+    const t0 = t;
+    const cc = item.chord || ex.context_chord;   // a phrase can be heard against its chord instead of the home note
+    if (cc) add('home', strum(cc, t, spb * 2) + 0.3); else { pluck(degMidi(1), t, spb * 0.9, 0.3); add('home', 2 * spb); }
     if (imagine) { add('imagine', ex.imagine_seconds || Math.max(5, n * 1.6)); add('sing', resp); }
     const callAt = t; playItem(item, callAt, spb); add('call', beats * spb + 0.4);
     if (!imagine && !ex.no_sing) add('sing', resp);
@@ -523,14 +707,14 @@ function PhraseRunner(ex) {
     let active = -1;
     if (stage === 'call') { let off = (t - r.callAt) / r.spb; for (let i = 0; i < r.item.durs.length; i++) { if (off < r.item.durs[i]) { active = i; break; } off -= r.item.durs[i]; } }
     const T = {
-      home: ['LISTEN', 'Home note…'],
+      home: ['LISTEN', (r.item.chord || ex.context_chord) ? 'The chord…' : 'Home note…'],
       imagine: ['IMAGINE', "Read it. Hear it in your head. Don't sing yet."],
       sing: ['SING', imagine ? 'Sing what you imagined.' : 'Sing it back.'],
       call: ['LISTEN', imagine ? 'Now listen. Did it match?' : 'Listen…'],
       play: ['PLAY', playText(ex, inst)],
       check: ['CHECK', imagine ? 'Did your imagined version match?' : 'How did that go?'],
     }[stage];
-    r.ui = { phase: T[0], inst, text: T[1], degs: r.item.degs, active, mask: mask(stage), remain: stage === 'check' ? null : r.end - t, total: r.end - r.t0,
+    r.ui = { phase: T[0], inst, text: T[1], degs: r.item.degs, active, mask: mask(stage), chordRow: (r.item.chord || ex.context_chord) ? [{ sym: r.item.chord || ex.context_chord }] : null, remain: stage === 'check' ? null : r.end - t, total: r.end - r.t0,
       ctx: stage === 'check' ? [['got', imagine ? '✓ It matched' : '✓ Got it'], ['again', '↻ Again']] : null, item: `${it + 1} of ${items.length}` };
     return false;
   };
@@ -608,7 +792,7 @@ function ReflectRunner() {
 }
 
 const RUNNERS = { warmup: PromptRunner, drone_listening: PromptRunner, find_note: PromptRunner, free_improvisation: PromptRunner,
-  rhythm_echo: CallResponseRunner, question_answer: CallResponseRunner, play_rest: CallResponseRunner, listen_sing_play: PhraseRunner, random_note_recognition: RecogRunner, reflection: ReflectRunner };
+  rhythm_echo: CallResponseRunner, question_answer: CallResponseRunner, play_rest: CallResponseRunner, chord_tones: PromptRunner, chord_recognition: ChordRecogRunner, listen_sing_play: PhraseRunner, random_note_recognition: RecogRunner, reflection: ReflectRunner };
 
 /* ======================================================================
    Lesson flow
@@ -684,7 +868,7 @@ const instLabel = i => i === 'sax' ? '🎷 Tenor sax' : i === 'guitar' ? '🎸 G
 function render() {
   if (!L || !L.r) return;
   const u = L.r.ui || {}, l = L.lesson;
-  $('lTitle').textContent = `Day ${l.day} · ${l.title} · key ${pretty(concertKey())}`;
+  $('lTitle').textContent = `Day ${l.day} · ${l.title} · ${keyLabel()}`;
   $('lStep').textContent = `${L.i + 1}/${L.exs.length}${u.item ? ' · ' + u.item : ''}`;
   const ph = S.paused ? 'PAUSED' : (u.phase || '');
   const pe = $('lPhase'); pe.textContent = PH_LABEL[ph] || ph; pe.className = 'phase ph-' + ph.replace(' ', '');
@@ -708,7 +892,21 @@ function render() {
   // fingering
   const fi = u.active > 0 ? u.active : 0, fd = degs.length ? degs[fi] : null, wantF = (S.showFing || u.fingAuto) && fd != null && !hide && !(u.mask && u.mask[fi]);
   $('lFing').classList.toggle('hidden', !wantF);
-  $('lStage').classList.toggle('compact', !!(wantF || u.rhythm));
+  // chord display (band) or a row of chords (listening / recognition)
+  const cb = $('lChord'), hideAll = S.hideNotes;
+  const cName = sym => u.inst ? chordName(sym, u.inst) : P.instrument === 'both' ? `${chordName(sym, 'guitar')}/${chordName(sym, 'sax')}` : chordName(sym, P.instrument);
+  let ch = '';
+  if (u.chord && !hideAll) {
+    const c = u.chord;
+    ch = c.hidden ? `<div class="cc"><b>?</b><small>listen for the change</small></div>`
+      : `<div class="cc"><b>${esc(cName(c.cur))}</b><small>${romanLabel(c.cur)}${c.bar ? ' · ' + c.bar : ''}</small></div>` + (c.next ? `<div class="nx${c.soon ? ' soon' : ''}">→ ${esc(cName(c.next))}</div>` : '');
+  } else if (u.chordRow && !hideAll) {
+    ch = `<div class="row">${u.chordRow.map(x => u.chordHidden ? `<div class="cc"><b>?</b><small>&nbsp;</small></div>`
+      : `<div class="cc${x.on ? ' on' : ''}"><b>${esc(cName(x.sym))}</b><small>${romanLabel(x.sym)}${u.quality ? ' · ' + chordQuality(x.sym) : ''}</small></div>`).join('')}</div>`;
+  }
+  if (cb.dataset.k !== ch) { cb.dataset.k = ch; cb.innerHTML = ch; }
+  cb.classList.toggle('hidden', !ch);
+  $('lStage').classList.toggle('compact', !!(wantF || u.rhythm || (ch && degs.length)));
   if (wantF) {
     const lines = u.inst ? [fingering(fd, u.inst)] : P.instrument === 'both' ? [fingering(fd, 'guitar'), fingering(fd, 'sax')] : [fingering(fd, P.instrument)];
     const fk = lines.join('|'); if ($('lFing').dataset.k !== fk) { $('lFing').dataset.k = fk; $('lFing').innerHTML = lines.map(esc).join('<br>'); }
@@ -761,7 +959,7 @@ function renderHome() {
   $('hTitle').textContent = l.title; $('hObj').textContent = l.objective;
   ['guitar', 'sax', 'both'].forEach(i => $('i' + i[0].toUpperCase() + i.slice(1)).classList.toggle('sel', P.instrument === i));
   $('bMinutes').textContent = `⏱ ${P.minutes} min`;
-  $('bKey').textContent = P.key ? `Key ${pretty(P.key)}` : `Key ${pretty(l.concert_key)}`;
+  $('bKey').textContent = `Key ${keyLabel()}`;
   $('bStart').textContent = L ? `▶ Resume Day ${L.lesson.day}` : "▶ Start today's lesson";
 }
 function renderLessons() {
@@ -770,9 +968,10 @@ function renderLessons() {
     + `<div class="stats">More weeks arrive as new lessons in lessons.js.</div>`;
   $('lList').querySelectorAll('button').forEach(b => b.onclick = () => { P.current = b.dataset.id; saveP(); startLesson(P.current, true); });
   const wk = Date.now() - 7 * 864e5, recent = P.history.filter(h => new Date(h.date + 'T12:00').getTime() >= wk);
-  const ear = Object.keys(P.ear).sort().map(d => { const [ok, n] = P.ear[d]; return `${d}: <b>${Math.round(100 * ok / n)}%</b>`; }).join(' · ');
+  const ear = Object.keys(P.ear).sort((a, b) => degSemis(a) - degSemis(b)).map(d => { const [ok, n] = P.ear[d]; return `${degText(d)}: <b>${Math.round(100 * ok / n)}%</b>`; }).join(' · ');
   $('lStats').innerHTML = `This week: <b>${recent.length}</b> sessions · <b>${recent.reduce((a, h) => a + h.minutes, 0)}</b> min`
-    + (ear ? `<br>Ear (right first time): ${ear}` : '');
+    + (ear ? `<br>Notes by ear: ${ear}` : '')
+    + (Object.keys(P.chords).length ? `<br>Chords by ear: ${Object.keys(P.chords).map(k => { const [ok, n] = P.chords[k]; return `${esc(k)} <b>${Math.round(100 * ok / n)}%</b>`; }).join(' · ')}` : '');
   $('bSound').textContent = `🔉 ${P.soundHigh ? 'High' : 'Low'}`;
   $('bCues').textContent = `🗣 Cues ${P.cues ? 'on' : 'off'}`;
   $('bWipe').textContent = '🗑 Reset';
@@ -857,7 +1056,7 @@ async function keepAwake(on) { try { if (on && !lock && navigator.wakeLock) lock
   const reply = text => ({ content: [{ type: 'text', text }] });
   const none = { type: 'object', properties: {} };
   const inLesson = () => !!(L && L.r);
-  const status = () => { if (!inLesson()) return 'No lesson is running.'; const u = L.r.ui || {}; return `Day ${L.lesson.day}, ${L.lesson.title}. Step ${L.i + 1} of ${L.exs.length}: ${u.phase || ''}. ${u.text || ''}`; };
+  const status = () => { if (!inLesson()) return 'No lesson is running.'; const u = L.r.ui || {}; const ch = u.chord && !u.chord.hidden ? ` The chord is ${chordName(u.chord.cur, u.inst || 'guitar')}${u.chord.next ? ', next ' + chordName(u.chord.next, u.inst || 'guitar') : ''}.` : ''; return `Day ${L.lesson.day}, ${L.lesson.title}. Step ${L.i + 1} of ${L.exs.length}: ${u.phase || ''}. ${u.text || ''}${ch}`; };
   const normKey = k => {
     const s = String(k || '').trim().toLowerCase().replace(/\s*(major|minor)$/, '').replace(/\s*flat$/, 'b').replace(/\s*sharp$/, '#').replace('♭', 'b').replace('♯', '#');
     const m = s.match(/^([a-g])([b#]?)$/); if (!m) return null;
@@ -883,7 +1082,7 @@ async function keepAwake(on) { try { if (on && !lock && navigator.wakeLock) lock
         return reply(`Concert key ${pretty(concertKey())}. On tenor sax that's written ${pretty(SAX_KEY[concertKey()])}.`);
       } },
     { name: 'start_backing_track', description: 'Musical Intuition: start the drone or backing track.', inputSchema: none,
-      execute: async () => { if (inLesson() && L.ex.backing === 'vamp') backingStart(tempo()); else droneOn(); return reply('Playing.'); } },
+      execute: async () => { const b = inLesson() && bandOpts(L.ex); if (b) backingStart(tempo(), b); else droneOn(); return reply('Playing.'); } },
     { name: 'stop_backing_track', description: 'Musical Intuition: stop the drone or backing track.', inputSchema: none, execute: async () => { droneOff(); backingStop(); return reply('Stopped.'); } },
     { name: 'next_exercise', description: 'Musical Intuition: skip to the next exercise.', inputSchema: none, execute: async () => { if (!inLesson()) return reply('No lesson is running.'); nextEx(); return reply(status()); } },
     { name: 'pause_lesson', description: 'Musical Intuition: pause the lesson.', inputSchema: none, execute: async () => { togglePause(true); return reply('Paused.'); } },

@@ -677,3 +677,581 @@ window.LESSONS.push(
     ],
   },
 );
+
+/* ---------------- Weeks 5–8: hearing harmony ----------------
+   New pieces (see index.html):
+     backing: { progression: ['I','IV','V','I'] or [{sym, beats}], beats_per_chord, style: 'pop' | 'ballad' | 'shuffle' }
+       Chords are Roman numerals relative to home (I ii iii IV V vi vii°, V7, I7…). In minor/blues lessons the roots come
+       from the natural minor scale (i iv v III VI VII, V7 = the harmonic-minor dominant).
+     chord_display: 'full' (now → next) | 'current' | 'fade' (full → current → hidden) | 'hidden'
+     chord_tones: PromptRunner over the band; prompt/ex target: 'root' | 'third' | 'fifth' | 'tones' shows the note to aim for
+     chord_recognition: chords (pool) + answer 'numeral' | 'quality', or progressions: [[…], …]
+     prompt chord: 'IV' / chords: ['V7','I'] strums them (arp: true arpeggiates); {cIV} in text = that chord's name
+     degrees with accidentals: 'b3', 'b5', 'b6', 'b7' (always counted against home's major scale)
+     listen_sing_play phrases can be {degs, chord} to hear each phrase against its own chord; context_chord for all */
+
+Object.assign(window.WEEKS, { 5: 'Discovering the seven chords', 6: 'Following chord changes', 7: 'Exploring minor keys', 8: 'Blues and expressive improvisation' });
+
+const band = (progression, style, extra) => Object.assign({ progression, style: style || 'pop' }, extra || {});
+const tones = (backing, prompts, extra) => Object.assign({ type: 'chord_tones', duration_seconds: 240, backing, prompt_seconds: 60,
+  prompts: prompts.map(p => Object.assign({ phase: 'PLAY' }, p)) }, extra || {});
+const bandImprov = (backing, prompts, extra) => Object.assign({ type: 'free_improvisation', duration_seconds: 420, backing, degrees: [1, 2, 3, 4, 5, 6, 7], prompt_seconds: 60,
+  prompts: prompts.map(t => typeof t === 'string' ? { phase: 'CREATE', text: t } : Object.assign({ phase: 'CREATE' }, t)) }, extra || {});
+const listen = (prompts, seconds) => ({ type: 'drone_listening', duration_seconds: seconds || 180, prompt_seconds: 20, prompts });
+const MINOR = [1, 2, 'b3', 4, 5, 'b6', 'b7'], HARM = [1, 2, 'b3', 4, 5, 'b6', 7], PENTA = [1, 'b3', 4, 5, 'b7'], BLUES = [1, 'b3', 4, 'b5', 5, 'b7'];
+const TWELVE = ['I7', 'I7', 'I7', 'I7', 'IV7', 'IV7', 'I7', 'I7', 'V7', 'IV7', 'I7', 'V7'];
+const STORY = (take) => [
+  { text: `${take} Beginning: quiet, a few notes, one small idea.`, seconds: 75 },
+  { text: 'Middle: develop the idea. Repeat it, change it.', seconds: 75 },
+  { text: 'Build: louder, busier, more tension.', seconds: 75 },
+  { text: 'Ending: a simple phrase that comes home.', seconds: 55 },
+];
+
+window.LESSONS.push(
+  /* ===== WEEK 5: discovering the seven chords (C major) ===== */
+  {
+    lesson_id: 'W05D21', week: 5, day: 21, title: 'The I chord',
+    objective: 'Hear home as a chord — 1, 3, 5 — and play its notes one by one.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 66, allowed_scale_degrees: [1, 3, 5], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {n3} {n5} slowly, up and down.'),
+      listen([
+        { phase: 'LISTEN', text: 'The I chord: {cI}. Home, as a chord.', chord: 'I', arp: true },
+        { phase: 'SING', text: 'Sing its notes: 1, 3, 5.', degs: [1, 3, 5] },
+        { phase: 'LISTEN', text: 'Again. Hear each tone inside it.', chord: 'I', arp: true },
+        { phase: 'SING', text: 'Sing the top note, 5. Then the bottom, 1.', degs: [5, 1] },
+        { phase: 'IMAGINE', text: 'Imagine the chord ringing.', degs: [1, 3, 5] },
+        { phase: 'LISTEN', text: 'Solid. Settled. Home.', chord: 'I' },
+      ]),
+      { type: 'listen_sing_play', context_chord: 'I', phrases: [[1, 3, 5], [5, 3, 1], [1, 3, 5, 3, 1], [3, 5, 8]], repetitions: 2, response_seconds: 6 },
+      tones(band(['I'], 'ballad'), [
+        { text: 'Play the root, {n1}. Long notes with the band.', target: 'root' },
+        { text: 'Now the 3rd, {n3} — the warm, bright one.', target: 'third' },
+        { text: 'The 5th, {n5} — strong and open.', target: 'fifth' },
+        { text: 'All three, any order, any rhythm.', target: 'tones' },
+      ]),
+      bandImprov(band(['I']), [
+        'Improvise over the {cI} vamp. Land on 1, 3 or 5 at the end of each phrase.',
+        'Short phrases. Leave space for the band.',
+        'Use the whole scale, but rest on chord tones.',
+        'A rhythm you repeat, ending on 3.',
+        'Quiet, then busier, then quiet.',
+        'Free. End on home.',
+      ], { duration_seconds: 360 }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W05D22', week: 5, day: 22, title: 'The IV chord',
+    objective: 'Meet IV — 4, 6, 1 — and hear the change from I to IV.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 66, allowed_scale_degrees: [1, 3, 4, 5, 6], duration_minutes: 30,
+    exercises: [
+      warm('Play {n4} {n6} {n1}, then {n1} {n3} {n5}.'),
+      listen([
+        { phase: 'LISTEN', text: 'The IV chord: {cIV}. Tones 4, 6, 1.', chord: 'IV', arp: true },
+        { phase: 'SING', text: 'Sing 4, 6, 1.', degs: [4, 6, 8] },
+        { phase: 'LISTEN', text: 'Home chord, then IV. It lifts and opens.', chords: ['I', 'IV'] },
+        { phase: 'LISTEN', text: 'IV back to I — the "amen" sound.', chords: ['IV', 'I'] },
+        { phase: 'SING', text: 'Sing 1 3 5, then 4 6 1.', degs: [1, 3, 5, 4, 6, 8] },
+        { phase: 'IMAGINE', text: 'Imagine the band moving from I to IV.' },
+      ]),
+      { type: 'listen_sing_play', context_chord: 'IV', phrases: [[4, 6, 8], [8, 6, 4], [4, 6, 8, 6, 4]], repetitions: 2, response_seconds: 6 },
+      { type: 'chord_recognition', chords: ['I', 'IV'], trials: 10 },
+      tones(band([{ sym: 'I', beats: 8 }, { sym: 'IV', beats: 8 }], 'ballad'), [
+        { text: 'Play each chord’s root as it arrives.', target: 'root' },
+        { text: 'Now each chord’s 3rd. Hear {n3} move to {n6}.', target: 'third' },
+        { text: 'Any chord tone — change when the chord changes.', target: 'tones' },
+      ], { duration_seconds: 180 }),
+      bandImprov(band(['I', 'IV']), [
+        'Hear the change. Land on a chord tone when it arrives.',
+        'Lean on 6 over IV. Back to 3 over I.',
+        'One phrase per chord.',
+        'Rest on the change — let the band announce it.',
+        'Free. Follow the harmony.',
+      ], { duration_seconds: 360, chord_tones: true }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W05D23', week: 5, day: 23, title: 'The V chord',
+    objective: 'Feel V and V7 pull toward home — and the relief when it resolves.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 66, allowed_scale_degrees: [1, 2, 3, 4, 5, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n5} {n7} {n2}, then {n1} {n3} {n5}.'),
+      listen([
+        { phase: 'LISTEN', text: 'The V chord: {cV}. Tones 5, 7, 2. Strong, unfinished.', chord: 'V', arp: true },
+        { phase: 'LISTEN', text: 'V to I. Resolution.', chords: ['V', 'I'] },
+        { phase: 'LISTEN', text: 'V7: {cV7}. Adds 4 — even more pull.', chord: 'V7', arp: true },
+        { phase: 'LISTEN', text: 'V7 to I. Feel the release.', chords: ['V7', 'I'] },
+        { phase: 'SING', text: 'Sing 7 rising to 1, and 4 falling to 3.', degs: [7, 8, 4, 3] },
+        { phase: 'IMAGINE', text: 'Imagine V7 waiting… then home.' },
+      ]),
+      { type: 'listen_sing_play', context_chord: 'V7', phrases: [[5, 7, 9], [5, 7, 9, 11], [7, 8], [4, 3]], repetitions: 2, response_seconds: 6 },
+      { type: 'chord_recognition', chords: ['I', 'IV', 'V'], trials: 10 },
+      tones(band([{ sym: 'V7', beats: 4 }, { sym: 'I', beats: 4 }], 'ballad'), [
+        { text: 'Roots: {n5} on V7, {n1} on I.', target: 'root' },
+        { text: 'Each chord’s 3rd. Hear {n7} rise to… where?', target: 'third' },
+        { text: 'Any chord tone. Make V7 sound tense, I sound relaxed.', target: 'tones' },
+      ], { duration_seconds: 180 }),
+      bandImprov(band(['I', 'IV', 'V7', 'I']), [
+        'Over V7, build tension. Over I, let it go.',
+        'End phrases on home when I arrives.',
+        'Use 7 and 4 over V7.',
+        'Fewer notes. Feel the pull.',
+        'Free. Follow the harmony.',
+      ], { duration_seconds: 360, chord_tones: true }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W05D24', week: 5, day: 24, title: 'The minor chords',
+    objective: 'ii, iii and vi: the softer, darker members of the family.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 66, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n6} {n1} {n3}, then {n2} {n4} {n6}.'),
+      listen([
+        { phase: 'LISTEN', text: 'vi: {cvi}. 6, 1, 3. Minor — softer, darker.', chord: 'vi', arp: true },
+        { phase: 'LISTEN', text: 'I, then vi. Same family, different mood.', chords: ['I', 'vi'] },
+        { phase: 'LISTEN', text: 'ii: {cii}. 2, 4, 6.', chord: 'ii', arp: true },
+        { phase: 'LISTEN', text: 'iii: {ciii}. 3, 5, 7.', chord: 'iii', arp: true },
+        { phase: 'SING', text: 'Sing a major chord, then a minor one.', degs: [1, 3, 5, 6, 8, 10] },
+        { phase: 'IMAGINE', text: 'Imagine the difference between bright and soft.' },
+      ], 200),
+      { type: 'listen_sing_play', phrases: [{ degs: [6, 8, 10], chord: 'vi' }, { degs: [2, 4, 6], chord: 'ii' }, { degs: [3, 5, 7], chord: 'iii' }, { degs: [1, 3, 5], chord: 'I' }],
+        repetitions: 2, response_seconds: 6 },
+      { type: 'chord_recognition', answer: 'quality', chords: ['I', 'IV', 'V', 'ii', 'iii', 'vi'], trials: 12 },
+      tones(band(['I', 'vi', 'ii', 'V']), [
+        { text: 'Roots: 1, 6, 2, 5.', target: 'root' },
+        { text: 'Each chord’s 3rd. Hear major and minor.', target: 'third' },
+        { text: 'Any chord tone, on the change.', target: 'tones' },
+      ], { duration_seconds: 180 }),
+      bandImprov(band([{ sym: 'I', beats: 8 }, { sym: 'vi', beats: 8 }], 'ballad'), [
+        'Bright over I, tender over vi.',
+        'Same phrase over both chords. Hear it change colour.',
+        'Lean on 6 over vi.',
+        'Free. Follow the mood.',
+      ], { duration_seconds: 300, chord_tones: true }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W05D25', week: 5, day: 25, title: 'The complete harmonic landscape',
+    objective: 'Add vii° and hear all seven chords of the key.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 66, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play the scale slowly. Then {n7} {n2} {n4}.'),
+      listen([
+        { phase: 'LISTEN', text: 'vii°: {cvii°}. 7, 2, 4. Tense and unstable.', chord: 'vii°', arp: true },
+        { phase: 'LISTEN', text: 'vii° melts into home.', chords: ['vii°', 'I'] },
+        { phase: 'LISTEN', text: 'All seven chords, up the scale.', chords: ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°', 'I'], seconds: 30 },
+        { phase: 'SING', text: 'Sing the roots: 1 to 7 and home.', degs: [1, 2, 3, 4, 5, 6, 7, 8] },
+        { phase: 'IMAGINE', text: 'Which chord feels most like you?' },
+      ], 160),
+      { type: 'chord_recognition', answer: 'quality', chords: ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'], trials: 10 },
+      { type: 'chord_recognition', chords: ['I', 'ii', 'IV', 'V', 'vi'], trials: 10 },
+      tones(band(['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°', 'I'], 'ballad'), [
+        { text: 'Walk the roots with the band.', target: 'root' },
+        { text: 'Each chord’s 3rd.', target: 'third' },
+      ], { duration_seconds: 150, prompt_seconds: 75 }),
+      bandImprov(band(['I', 'vi', 'ii', 'V']), [
+        'Over the classic 1–6–2–5. Land on chord tones.',
+        'Phrases that start on the change.',
+        'Phrases that end on the change.',
+        'Free. Follow the harmony.',
+      ], { duration_seconds: 300, chord_tones: true }),
+      REFLECTION,
+    ],
+  },
+
+  /* ===== WEEK 6: following chord changes ===== */
+  {
+    lesson_id: 'W06D26', week: 6, day: 26, title: 'I to IV',
+    objective: 'Land on a chord tone exactly when the harmony changes.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 70, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {n3} {n5}, then {n4} {n6} {n1}.'),
+      listen([
+        { phase: 'LISTEN', text: 'I, IV, I, IV. Hear the moment it changes.', chords: ['I', 'IV', 'I', 'IV'] },
+        { phase: 'SING', text: 'Sing the roots as it changes: 1… 4… 1… 4.', chords: ['I', 'IV', 'I', 'IV'] },
+      ], 60),
+      tones(band(['I', 'IV', 'I', 'IV']), [
+        { text: 'Root of each chord, on beat 1.', target: 'root' },
+        { text: 'The 3rd of each chord.', target: 'third' },
+        { text: 'Any chord tone — right on the change.', target: 'tones' },
+        { text: 'Same, with a rhythm leading into the change.', target: 'tones' },
+        { text: 'Fewer notes. Just land well.', target: 'tones' },
+      ], { duration_seconds: 300 }),
+      { type: 'question_answer', backing: band(['I', 'IV']), degrees: [1, 2, 3, 4, 5, 6, 7], duration_seconds: 240 },
+      bandImprov(band(['I', 'IV', 'I', 'IV']), [
+        'Free over I–IV. The chord display fades as you go — trust your ears.',
+        'Land on 3 over I, on 6 over IV.',
+        'Start a phrase just before the change.',
+        'Free.',
+      ], { duration_seconds: 300, chord_tones: true, chord_display: 'fade' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W06D27', week: 6, day: 27, title: 'I to V',
+    objective: 'Hear tension (V) and resolution (I) and shape phrases around them.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 70, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {n3} {n5}, then {n5} {n7} {n2}.'),
+      listen([
+        { phase: 'LISTEN', text: 'I, V, I, V. Feel the lean and the release.', chords: ['I', 'V', 'I', 'V'] },
+        { phase: 'SING', text: 'Sing the roots: 1… 5… 1… 5.', chords: ['I', 'V', 'I', 'V'] },
+      ], 60),
+      tones(band(['I', 'V', 'I', 'V']), [
+        { text: 'Root of each chord.', target: 'root' },
+        { text: 'The 3rd: {n3} over I, {n7} over V.', target: 'third' },
+        { text: 'Any chord tone, on the change.', target: 'tones' },
+        { text: 'Make V sound like a question.', target: 'tones' },
+      ], { duration_seconds: 240 }),
+      { type: 'question_answer', backing: band(['I', 'V']), degrees: [1, 2, 3, 4, 5, 6, 7], duration_seconds: 240 },
+      bandImprov(band(['I', 'V', 'I', 'V']), [
+        'Phrases that respond to the harmony: ask on V, answer on I.',
+        'Hold 7 over V. Step up to home on I.',
+        'Hold 2 over V. Step down to home.',
+        'Free. The display fades — listen.',
+      ], { duration_seconds: 360, chord_tones: true, chord_display: 'fade' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W06D28', week: 6, day: 28, title: 'I–IV–V–I',
+    objective: 'Follow the classic progression: roots, then thirds and fifths, then freely.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 70, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play the roots {n1} {n4} {n5} {n1}, slowly.'),
+      listen([
+        { phase: 'LISTEN', text: 'I, IV, V, I.', chords: ['I', 'IV', 'V', 'I'] },
+        { phase: 'SING', text: 'Sing the roots with it: 1, 4, 5, 1.', chords: ['I', 'IV', 'V', 'I'] },
+      ], 60),
+      tones(band(['I', 'IV', 'V', 'I']), [
+        { text: 'Roots: 1, 4, 5, 1.', target: 'root', seconds: 90 },
+        { text: 'Thirds: 3, 6, 7, 3.', target: 'third', seconds: 90 },
+        { text: 'Fifths: 5, 1, 2, 5.', target: 'fifth', seconds: 90 },
+        { text: 'Mix them — any chord tone.', target: 'tones', seconds: 60 },
+      ], { duration_seconds: 330 }),
+      bandImprov(band(['I', 'IV', 'V', 'I']), [
+        'Free improvisation over I–IV–V–I.',
+        'Start each phrase on a chord tone.',
+        'Answer the band: one phrase per two chords.',
+        'Steps between chord tones.',
+        'Free.',
+      ], { duration_seconds: 420, chord_tones: true, chord_display: 'current' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W06D29', week: 6, day: 29, title: 'I–V–vi–IV',
+    objective: 'Improvise over the most common pop progression, with the chords fading from view.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 72, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play the roots {n1} {n5} {n6} {n4}, slowly.'),
+      listen([
+        { phase: 'LISTEN', text: 'I, V, vi, IV — you have heard this in a thousand songs.', chords: ['I', 'V', 'vi', 'IV'] },
+        { phase: 'SING', text: 'Sing the roots: 1, 5, 6, 4.', chords: ['I', 'V', 'vi', 'IV'] },
+      ], 60),
+      tones(band(['I', 'V', 'vi', 'IV']), [
+        { text: 'Roots with the band.', target: 'root' },
+        { text: 'Thirds: 3, 7, 1, 6. A smooth little melody.', target: 'third' },
+        { text: 'Any chord tone. Watch the next chord coming.', target: 'tones' },
+      ], { duration_seconds: 240, prompt_seconds: 80 }),
+      { type: 'question_answer', backing: band(['I', 'V', 'vi', 'IV']), degrees: [1, 2, 3, 4, 5, 6, 7], duration_seconds: 240 },
+      bandImprov(band(['I', 'V', 'vi', 'IV']), [
+        'Free over I–V–vi–IV. The chord display fades — keep following.',
+        'Make up a hook and repeat it.',
+        'Tender over vi.',
+        'Free.',
+      ], { duration_seconds: 420, chord_tones: true, chord_display: 'fade' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W06D30', week: 6, day: 30, title: 'Hearing chord changes',
+    objective: 'Name familiar progressions by ear, then improvise with no chord display.',
+    concert_key: 'C', scale: 'major', tempo_bpm: 70, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play the roots of I, IV, V and vi.'),
+      { type: 'chord_recognition', chords: ['I', 'IV', 'V', 'vi'], trials: 8 },
+      { type: 'chord_recognition', progressions: [['I', 'IV', 'V', 'I'], ['I', 'V', 'vi', 'IV'], ['I', 'vi', 'IV', 'V'], ['I', 'IV', 'I', 'V'], ['vi', 'IV', 'I', 'V'], ['I', 'V', 'IV', 'I']], trials: 10 },
+      bandImprov(band(['I', 'vi', 'IV', 'V']), [
+        'No chord display. Follow the band by ear.',
+        'Land on chord tones when you hear the change.',
+        'Free.',
+      ], { duration_seconds: 300, chord_display: 'hidden' }),
+      bandImprov(band(['I', 'V', 'vi', 'IV']), [
+        { text: 'Performance. Want a recording? Start your phone recorder now.', seconds: 20 },
+        { text: 'Play — follow the harmony. Finish on home.', seconds: 160 },
+      ], { duration_seconds: 180, chord_display: 'hidden', record_performance: true }),
+      REFLECTION,
+    ],
+  },
+
+  /* ===== WEEK 7: exploring minor keys (concert A minor = written B minor on tenor sax) ===== */
+  {
+    lesson_id: 'W07D31', week: 7, day: 31, title: 'Finding minor home',
+    objective: 'A as home: the natural minor scale and its darker colours.',
+    concert_key: 'A', scale: 'minor', tempo_bpm: 66, allowed_scale_degrees: MINOR, duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {n2} {nb3} {n4} {n5} slowly.'),
+      { type: 'drone_listening', duration_seconds: 240, drone: true, prompt_seconds: 20, prompts: [
+        { phase: 'LISTEN', text: 'New home: {n1}. Settle in.' },
+        { phase: 'LISTEN', text: 'The natural minor scale.', play: [1, 2, 'b3', 4, 5, 'b6', 'b7', 8] },
+        { phase: 'LISTEN', text: 'Major 1 3 5, then minor 1 ♭3 5.', play: [1, 3, 5, 1, 'b3', 5] },
+        { phase: 'SING', text: 'Sing 1, ♭3, 5.', degs: [1, 'b3', 5] },
+        { phase: 'LISTEN', text: 'Same notes as C major — but home is A.', play: ['b3', 4, 5, 'b6', 'b7', 8, 9, 'b10'] },
+        { phase: 'IMAGINE', text: 'Imagine ♭3. How does it feel compared to 3?' },
+      ] },
+      { type: 'find_note', duration_seconds: 60, drone: true, degrees: [1, 'b3', 5], show_fingering: true, confirm: '✓ Found it', prompts: [
+        { phase: 'PLAY', text: 'Find {n1}, {nb3} and {n5}.' }] },
+      { type: 'listen_sing_play', phrases: [[1, 'b3', 1], [1, 2, 'b3', 2, 1], [5, 'b6', 5], [8, 'b7', 'b6', 5]], repetitions: 2, response_seconds: 6, drone: true },
+      { type: 'random_note_recognition', allowed_degrees: [1, 'b3', 5, 'b7'], trials: 10 },
+      improv(MINOR, [
+        'Explore minor home. Linger on ♭3.',
+        'Slow and dark. ♭6 falling to 5.',
+        'Short phrases, all ending on home.',
+        '♭7 stepping up to home.',
+        'Mysterious and quiet.',
+        'Free.',
+      ], { duration_seconds: 360 }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W07D32', week: 7, day: 32, title: 'Minor chord tones',
+    objective: '1, ♭3, 5: hear the minor third against the major third, and make minor melodies.',
+    concert_key: 'A', scale: 'minor', tempo_bpm: 66, allowed_scale_degrees: MINOR, duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {nb3} {n5}, then {n1} {n3} {n5}.'),
+      listen([
+        { phase: 'LISTEN', text: 'The minor home chord: {ci}.', chord: 'i', arp: true },
+        { phase: 'LISTEN', text: 'Major third, then minor third.', play: [1, 3, 1, 'b3'] },
+        { phase: 'SING', text: 'Sing 1 3, then 1 ♭3. Feel the shade change.', degs: [1, 3, 1, 'b3'] },
+        { phase: 'LISTEN', text: '{ci} again. 1, ♭3, 5.', chord: 'i', arp: true },
+        { phase: 'IMAGINE', text: 'Imagine a minor melody.' },
+      ], 150),
+      { type: 'random_note_recognition', allowed_degrees: [3, 'b3'], trials: 12 },
+      { type: 'listen_sing_play', context_chord: 'i', phrases: [[1, 'b3', 5], [5, 'b3', 1], [1, 'b3', 5, 'b3', 1], ['b3', 2, 1]], repetitions: 2, response_seconds: 6 },
+      { type: 'listen_sing_play', random: { degrees: MINOR, length: 4, count: 6, end_home: true, max_leap: 2 }, response_seconds: 7, drone: true },
+      bandImprov(band(['i'], 'ballad'), [
+        'Short minor melodies over {ci}. Land on 1, ♭3 or 5.',
+        'Lean on ♭3.',
+        'Sad and slow.',
+        'Then a little brighter — same notes.',
+        'Free.',
+      ], { duration_seconds: 360, degrees: MINOR }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W07D33', week: 7, day: 33, title: 'Minor chord progressions',
+    objective: 'Follow i–iv–v–i with chord tones.',
+    concert_key: 'A', scale: 'minor', tempo_bpm: 68, allowed_scale_degrees: MINOR, duration_minutes: 30,
+    exercises: [
+      warm('Play the roots {n1} {n4} {n5} {n1}.'),
+      listen([
+        { phase: 'LISTEN', text: 'i, iv, v, i.', chords: ['i', 'iv', 'v', 'i'] },
+        { phase: 'SING', text: 'Sing the roots: 1, 4, 5, 1.', chords: ['i', 'iv', 'v', 'i'] },
+        { phase: 'LISTEN', text: 'iv: {civ}. 4, ♭6, 1.', chord: 'iv', arp: true },
+        { phase: 'LISTEN', text: 'v: {cv}. 5, ♭7, 2.', chord: 'v', arp: true },
+      ], 120),
+      tones(band(['i', 'iv', 'v', 'i'], 'ballad'), [
+        { text: 'Roots: 1, 4, 5, 1.', target: 'root' },
+        { text: 'Thirds: ♭3, ♭6, ♭7, ♭3.', target: 'third' },
+        { text: 'Fifths.', target: 'fifth' },
+        { text: 'Any chord tone, on the change.', target: 'tones' },
+      ], { duration_seconds: 300 }),
+      { type: 'chord_recognition', answer: 'quality', chords: ['i', 'iv', 'v', 'III', 'VI', 'VII'], trials: 8 },
+      bandImprov(band(['i', 'iv', 'v', 'i'], 'ballad'), [
+        'Follow the changes with chord tones.',
+        'A phrase for each chord.',
+        'Dark and slow.',
+        'Free. The display fades.',
+      ], { duration_seconds: 360, degrees: MINOR, chord_tones: true, chord_display: 'fade' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W07D34', week: 7, day: 34, title: 'Harmonic minor',
+    objective: 'Raise the 7th and hear the dominant chord resolve to minor home — pure drama.',
+    concert_key: 'A', scale: 'minor', tempo_bpm: 66, allowed_scale_degrees: HARM, duration_minutes: 30,
+    exercises: [
+      warm('Play {n5} {nb6} {n7} {n1} — slowly.'),
+      { type: 'drone_listening', duration_seconds: 200, drone: true, prompt_seconds: 20, prompts: [
+        { phase: 'LISTEN', text: 'Natural minor: ♭7 to home.', play: [5, 'b6', 'b7', 8] },
+        { phase: 'LISTEN', text: 'Harmonic minor: raised 7 to home. Hear the pull?', play: [5, 'b6', 7, 8] },
+        { phase: 'LISTEN', text: '{cV7} to {ci}. Drama, then home.', chords: ['V7', 'i'] },
+        { phase: 'SING', text: 'Sing ♭6, 7, 1. Feel the wide step.', degs: ['b6', 7, 8] },
+        { phase: 'LISTEN', text: '{cV7}: 5, 7, 2, 4.', chord: 'V7', arp: true },
+        { phase: 'IMAGINE', text: 'Imagine 7 leaning hard into home.' },
+      ] },
+      { type: 'random_note_recognition', allowed_degrees: ['b7', 7], trials: 10 },
+      { type: 'listen_sing_play', phrases: [{ degs: [7, 8], chord: 'V7' }, { degs: [5, 'b6', 7, 8], chord: 'V7' }, { degs: [2, 7, 8], chord: 'V7' }, { degs: [1, 'b3', 5], chord: 'i' }],
+        repetitions: 2, response_seconds: 6 },
+      tones(band(['i', 'iv', 'V7', 'i'], 'ballad'), [
+        { text: 'Roots.', target: 'root' },
+        { text: 'Thirds — the raised 7 over {cV7}.', target: 'third' },
+        { text: 'Any chord tone.', target: 'tones' },
+      ], { duration_seconds: 180 }),
+      bandImprov(band([{ sym: 'i', beats: 8 }, { sym: 'V7', beats: 8 }], 'ballad'), [
+        'Over {cV7}, use the raised 7. Over {ci}, come home.',
+        'Dramatic: long notes, then a quick run home.',
+        'Exotic and mysterious.',
+        'Free.',
+      ], { duration_seconds: 360, degrees: HARM, chord_tones: true }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W07D35', week: 7, day: 35, title: 'Minor musical storytelling',
+    objective: 'An expressive minor improvisation: mystery, sadness, dramatic tension.',
+    concert_key: 'A', scale: 'minor', tempo_bpm: 60, allowed_scale_degrees: HARM, duration_minutes: 30,
+    exercises: [
+      warm('Play the minor scale slowly, up and down.'),
+      listen([
+        { phase: 'IMAGINE', text: 'Plan a minor story: mystery…' },
+        { phase: 'IMAGINE', text: '…sadness…' },
+        { phase: 'IMAGINE', text: '…dramatic tension…' },
+        { phase: 'IMAGINE', text: '…and a quiet ending.' },
+      ], 60),
+      bandImprov(band(['i', 'iv', 'V7', 'i'], 'ballad'), STORY('Take 1.'), { duration_seconds: 280, degrees: HARM, chord_display: 'current' }),
+      bandImprov(band(['i', 'iv', 'V7', 'i'], 'ballad'), STORY('Take 2 — want a recording? Start your phone recorder.'), { duration_seconds: 280, degrees: HARM, chord_display: 'current', record_performance: true }),
+      bandImprov(band(['i', 'VI', 'iv', 'V7'], 'ballad'), [
+        'Bonus: a new minor progression. Explore.',
+        'Free.',
+      ], { duration_seconds: 240, degrees: HARM, chord_tones: true }),
+      REFLECTION,
+    ],
+  },
+
+  /* ===== WEEK 8: blues and expressive improvisation (concert A = written B on tenor sax) ===== */
+  {
+    lesson_id: 'W08D36', week: 8, day: 36, title: 'Minor pentatonic',
+    objective: 'Five notes that make the blues sing — played as short phrases, not runs.',
+    concert_key: 'A', scale: 'blues', tempo_bpm: 72, allowed_scale_degrees: PENTA, duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {nb3} {n4} {n5} {nb7} {n1}, slowly.'),
+      { type: 'drone_listening', duration_seconds: 150, drone: true, prompt_seconds: 15, prompts: [
+        { phase: 'LISTEN', text: 'The minor pentatonic: 1 ♭3 4 5 ♭7.', play: [1, 'b3', 4, 5, 'b7', 8] },
+        { phase: 'SING', text: 'Sing it up.', degs: PENTA },
+        { phase: 'LISTEN', text: 'A blues phrase.', play: ['b3', 1, 'b3', 4, 'b3', 1] },
+        { phase: 'SING', text: 'Sing it back with attitude.' },
+        { phase: 'LISTEN', text: 'Another.', play: [5, 'b7', 5, 4, 'b3', 1] },
+        { phase: 'PLAY', text: 'Play anything from the five notes.' },
+      ] },
+      { type: 'find_note', duration_seconds: 60, drone: true, degrees: PENTA, show_fingering: true, confirm: '✓ Found them', prompts: [
+        { phase: 'PLAY', text: 'Find all five: {n1} {nb3} {n4} {n5} {nb7}.' }] },
+      { type: 'listen_sing_play', random: { degrees: [1, 'b3', 4, 5, 'b7', 8], length: 3, count: 10, min_length: 3, max_length: 5, rhythmic: true, repeat_notes: true, max_leap: 2 },
+        response_seconds: 6, drone: true },
+      { type: 'question_answer', backing: band(['I7'], 'shuffle'), degrees: [1, 'b3', 4, 5, 'b7', 8], swing: true, duration_seconds: 240 },
+      bandImprov(band(['I7'], 'shuffle'), [
+        'Short pentatonic phrases over the shuffle. Not scale runs.',
+        'Repeat a little lick three times.',
+        'Leave space — let the band breathe.',
+        'Bend or slide into ♭3.',
+        'Free.',
+      ], { duration_seconds: 360, degrees: PENTA }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W08D37', week: 8, day: 37, title: 'The blue note',
+    objective: 'Add ♭5 — the tension that makes the blues cry — and resolve it.',
+    concert_key: 'A', scale: 'blues', tempo_bpm: 72, allowed_scale_degrees: BLUES, duration_minutes: 30,
+    exercises: [
+      warm('Play {n4} {nb5} {n5}, slowly. Then back down.'),
+      { type: 'drone_listening', duration_seconds: 150, drone: true, prompt_seconds: 15, prompts: [
+        { phase: 'LISTEN', text: 'The blue note: ♭5, {nb5}.', play: [4, 'b5', 5] },
+        { phase: 'LISTEN', text: 'It rubs… then resolves.', play: [5, 'b5', 4, 'b3', 1] },
+        { phase: 'SING', text: 'Sing 4, ♭5, 5. Feel the squeeze.', degs: [4, 'b5', 5] },
+        { phase: 'LISTEN', text: 'A classic blues lick.', play: [1, 'b3', 4, 'b5', 5, 'b3', 1] },
+        { phase: 'SING', text: 'Sing it back.' },
+        { phase: 'IMAGINE', text: 'Imagine ♭5 as a cry.' },
+      ] },
+      { type: 'find_note', duration_seconds: 45, drone: true, degrees: ['b5'], show_fingering: true, confirm: '✓ Found it', prompts: [
+        { phase: 'PLAY', text: 'Find {nb5}, between {n4} and {n5}. Pass through it — don’t sit on it.' }] },
+      { type: 'listen_sing_play', phrases: [[4, 'b5', 4], [5, 'b5', 4, 'b3', 1], [1, 'b3', 4, 'b5', 5], ['b3', 4, 'b5', 4, 'b3', 1]], repetitions: 2, response_seconds: 6, drone: true },
+      { type: 'random_note_recognition', allowed_degrees: [4, 'b5', 5], trials: 10 },
+      bandImprov(band(['I7'], 'shuffle'), [
+        'Use the blue note as a passing tension. Resolve to 4 or 5.',
+        'Slide up through ♭5 to 5.',
+        'Slide down through ♭5 to 4.',
+        'Hold ♭5 for a moment. Make it cry. Then resolve.',
+        'Free.',
+      ], { duration_seconds: 360, degrees: BLUES }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W08D38', week: 8, day: 38, title: 'Twelve-bar blues',
+    objective: 'Learn the 12-bar form by following it: roots, then chord tones, then freely.',
+    concert_key: 'A', scale: 'blues', tempo_bpm: 60, allowed_scale_degrees: BLUES, duration_minutes: 30,
+    exercises: [
+      warm('Play the roots {n1} {n4} {n5}.'),
+      listen([
+        { phase: 'LISTEN', text: 'The three blues chords: {cI7}, {cIV7}, {cV7}.', chords: ['I7', 'IV7', 'I7', 'V7'] },
+        { phase: 'LISTEN', text: '4 bars of I, 2 of IV, 2 of I, then V, IV, I, V.', chords: ['I7', 'IV7', 'V7', 'I7'] },
+        { phase: 'SING', text: 'Sing the roots: 1… 4… 5… 1.', chords: ['I7', 'IV7', 'V7', 'I7'] },
+      ], 90),
+      tones(band(TWELVE, 'shuffle'), [
+        { text: 'Roots of each chord — one note per bar. Watch the bar count.', target: 'root', seconds: 96 },
+        { text: 'The 3rd of each chord — it moves with the chord.', target: 'third', seconds: 96 },
+        { text: 'Any chord tone. Feel the form.', target: 'tones', seconds: 96 },
+      ], { duration_seconds: 288 }),
+      bandImprov(band(TWELVE, 'shuffle'), [
+        'Improvise over the 12-bar blues. Use the pentatonic and the blue note.',
+        'Mark the change to IV in bar 5.',
+        'Build tension at V in bar 9.',
+        'Free. Watch for bar 1 coming round.',
+      ], { duration_seconds: 384, prompt_seconds: 96, degrees: BLUES, chord_display: 'full' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W08D39', week: 8, day: 39, title: 'Blues conversations',
+    objective: 'Trade two-bar blues phrases with the band: swing, repetition, articulation, dynamics.',
+    concert_key: 'A', scale: 'blues', tempo_bpm: 70, allowed_scale_degrees: BLUES, duration_minutes: 30,
+    exercises: [
+      warm('Play a blues lick you know, slowly, then with swing.'),
+      listen([
+        { phase: 'LISTEN', text: 'Swing: long-short, long-short.', play: [1, 1, 'b3', 'b3', 4, 4, 5] },
+        { phase: 'SING', text: 'Sing "doo-ba doo-ba doo-ba doo".' },
+        { phase: 'PLAY', text: 'Play it on one note with swing.' },
+      ], 60),
+      { type: 'question_answer', backing: band(TWELVE, 'shuffle'), degrees: [1, 'b3', 4, 'b5', 5, 'b7', 8], swing: true, duration_seconds: 480, chord_display: 'current' },
+      bandImprov(band(TWELVE, 'shuffle'), [
+        'Call and response with yourself: a two-bar lick, then an answer.',
+        'Repeat a lick, louder each time.',
+        'Short, punchy notes. Then long, smooth ones.',
+        'Free.',
+      ], { duration_seconds: 384, prompt_seconds: 96, degrees: BLUES, chord_display: 'current' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W08D40', week: 8, day: 40, title: 'My blues performance',
+    objective: 'Record a complete 12-bar blues improvisation, then evaluate it honestly and kindly.',
+    concert_key: 'A', scale: 'blues', tempo_bpm: 66, allowed_scale_degrees: BLUES, duration_minutes: 30,
+    exercises: [
+      warm('Play your favourite blues licks, slowly.'),
+      bandImprov(band(TWELVE, 'shuffle'), [
+        'Warm-up choruses. Find your groove.',
+      ], { duration_seconds: 175, prompt_seconds: 175, degrees: BLUES, chord_display: 'current' }),
+      bandImprov(band(TWELVE, 'shuffle'), [
+        { text: 'Performance. Start your phone recorder now. Two choruses.', seconds: 12 },
+        { text: 'Chorus 1: simple, with space.', seconds: 88 },
+        { text: 'Chorus 2: build — then end on home.', seconds: 88 },
+      ], { duration_seconds: 188, degrees: BLUES, chord_display: 'hidden', record_performance: true }),
+      { type: 'drone_listening', duration_seconds: 100, prompt_seconds: 20, prompts: [
+        { phase: 'REFLECT', text: 'Listen back to your recording.' },
+        { phase: 'REFLECT', text: 'Phrasing: did your phrases breathe?' },
+        { phase: 'REFLECT', text: 'Rhythm: did you feel the swing?' },
+        { phase: 'REFLECT', text: 'Expression: where did it sound most like you?' },
+        { phase: 'REFLECT', text: 'Continuity: did it tell one story? Say "save a reflection" to keep a note.' },
+      ] },
+      REFLECTION,
+    ],
+  },
+);
