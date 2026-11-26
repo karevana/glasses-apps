@@ -1822,3 +1822,76 @@ window.LESSONS.push(
     ],
   },
 );
+
+/* ---------------- 🎹 Landscape Practice (a playground beside the course) ----------------
+   Every exercise supports one or more of: see and hear · hear and recognise · imagine and sing · imagine and play · create freely.
+   Types: land_see (scale and shapes lit in sync), random_note_recognition (timed reveal + replay, 👂/🎸 marks),
+   listen_sing_play mode 'imagine' (read → imagine → sing → hear → play), listen_sing_play response 'pref' + hide_answer
+   (call and response: one window of your chosen length, then reveal + replay), land_talk (musical conversation).
+   Display level, home reference, response window and drone come from Karen's settings (Practice screen). */
+window.PRACTICE = {
+  stages: [
+    { stage: 1, title: 'Explore 1, 3 and 5', goal: 'Home, 3 and 5: see and hear them, recognise them, imagine them, answer with them.', pool: [1, 3, 5] },
+    { stage: 2, title: 'Introduce 2 and 4', goal: 'Add the restless 2 and the leaning 4: hear 2 → 1 and 4 → 3.', pool: [1, 2, 3, 4, 5] },
+    { stage: 3, title: 'Introduce 6 and 7', goal: 'Complete the landscape: 6 → 5 and 7 → home.', pool: [1, 2, 3, 4, 5, 6, 7, 8] },
+    { stage: 4, title: 'All seven, by ear', goal: 'Recognise every degree with no visual guidance. Try Display → Hidden.', pool: [1, 2, 3, 4, 5, 6, 7, 8] },
+    { stage: 5, title: 'Across instruments and keys', goal: 'Carry what you hear between guitar and sax, and into G, F and D.', pool: [1, 2, 3, 4, 5, 6, 7, 8] },
+  ],
+  build(st) {
+    const P0 = st.pool, ALL = [1, 2, 3, 4, 5, 6, 7], up = [1, 2, 3, 4, 5, 6, 7, 8], down = up.slice().reverse();
+    const see = (sequences, secs, extra) => Object.assign({ type: 'land_see', duration_seconds: secs || 300, pool: P0, sequences }, extra || {});
+    const recog = (allowed, extra) => Object.assign({ type: 'random_note_recognition', allowed_degrees: allowed, trials: 10 }, extra || {});
+    const imagine = (phrases, extra) => Object.assign({ type: 'listen_sing_play', mode: 'imagine', phrases, imagine_seconds: 6, response_seconds: 6, home: 'always', pool: P0 }, extra || {});
+    const callResp = (src, extra) => Object.assign({ type: 'listen_sing_play', hide_answer: true, response: 'pref', pool: P0,
+      respond_text: 'Sing it, then find it on your {inst}.', check_text: 'Did yours match?' }, src, extra || {});
+    const talk = (pool, extra) => Object.assign({ type: 'land_talk', pool, duration_seconds: 300, answer_seconds: 10 }, extra || {});
+    const R = { type: 'reflection' };
+    if (st.stage === 1) return [
+      see([{ degs: up, text: 'The whole landscape: up…' }, { degs: down, text: '…and down. Watch each number light.' },
+        { degs: [1, 3, 5], text: 'Home, 3 and 5.', step: 1.1 }, { degs: [5, 3, 1], text: 'And back home.', step: 1.1 },
+        { degs: [1, 3, 5, 8, 5, 3, 1], text: 'Sing along if you like.' }]),
+      recog([1, 3, 5]),
+      imagine([[1, 3, 5], [5, 3, 1], [1, 5, 1]], { repetitions: 2 }),
+      callResp({ phrases: [[1, 3, 1], [1, 5, 3, 1], [5, 3, 1], [3, 5, 1], [1, 3, 5, 3, 1], [5, 1]] }),
+      talk([1, 3, 5], { questions: [[1, 3, 5], [5, 3, 1], [1, 5, 3]] }),
+      R,
+    ];
+    if (st.stage === 2) return [
+      see([{ degs: up, text: 'The landscape, up…' }, { degs: down, text: '…and down.' },
+        { degs: [1, 2, 1], text: '2 steps away from home… and back.', step: 1.1 }, { degs: [2, 1], text: '2 → 1. Restless, then settled.', step: 1.3 },
+        { degs: [3, 4, 3], text: '4 leans on 3.', step: 1.1 }, { degs: [4, 3], text: '4 → 3. Tension, release.', step: 1.3 }]),
+      recog([1, 2, 3, 4, 5]),
+      imagine([[1, 2, 3], [3, 2, 1], [3, 4, 3], [5, 4, 3, 2, 1]]),
+      callResp({ phrases: [[1, 2, 1], [2, 3, 2, 1], [3, 4, 3], [5, 4, 3], [1, 4, 3, 1], [5, 3, 2, 1]] }),
+      talk([1, 2, 3, 4, 5]),
+      R,
+    ];
+    if (st.stage === 3) return [
+      see([{ degs: up, text: 'The complete landscape, up…' }, { degs: down, text: '…and down.' },
+        { degs: [5, 6, 5], text: '6 is sweet, and settles on 5.', step: 1.1 }, { degs: [6, 5], text: '6 → 5.', step: 1.3 },
+        { degs: [5, 6, 7, 8], text: '7 pulls hard toward home.', step: 1.1 }, { degs: [7, 8], text: '7 → 1.', step: 1.3 }]),
+      recog(ALL),
+      imagine([[5, 6, 5], [5, 6, 7, 8], [3, 5, 7, 8], [8, 7, 6, 5]]),
+      callResp({ phrases: [[5, 6, 5], [6, 5, 3, 1], [5, 6, 7, 8], [3, 5, 7, 8], [8, 7, 8], [6, 5, 4, 3]] }),
+      talk(up),
+      R,
+    ];
+    if (st.stage === 4) return [
+      see([{ degs: up, text: 'One look at the landscape. Then trust your ears.' }, { degs: down, text: 'Tip: Practice settings → Display → Hidden.' }], 90),
+      recog(ALL, { blocks: [{ length: 1, trials: 14 }, { length: 2, trials: 6 }] }),
+      callResp({ random: { degrees: up, length: 3, count: 8, min_length: 2, max_length: 5 } }),
+      imagine([], { random: { degrees: up, length: 4, count: 6 }, phrases: undefined }),
+      talk(up),
+      R,
+    ];
+    return [      // stage 5: across instruments and keys
+      see([{ degs: up, text: 'Home is {n1} now. Same numbers, new names.' }, { degs: down, text: 'Find the landscape on your {inst}.' }], 120, { key: 'G' }),
+      callResp({ phrases: [[1, 3, 5, 3, 1], [5, 4, 3, 2, 1], [1, 2, 3, 5], [3, 5, 6, 5]] }, { inst: 'guitar', respond_text: 'Find it on your {inst}.' }),
+      callResp({ phrases: [[1, 3, 5, 3, 1], [5, 4, 3, 2, 1], [1, 2, 3, 5], [3, 5, 6, 5]] }, { inst: 'sax', respond_text: 'Same phrases, now on {inst} — new names, same numbers.' }),
+      recog(ALL, { key: 'G', trials: 8 }),
+      callResp({ random: { degrees: up, length: 3, count: 6, min_length: 2, max_length: 5 } }, { key: 'F' }),
+      talk(up, { key: 'D' }),
+      R,
+    ];
+  },
+};

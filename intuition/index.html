@@ -86,6 +86,21 @@
   .stage.compact .chordbox .cc b { font-size: calc(var(--u) * 7.5) !important; }
   .report { font-size: calc(var(--u) * 3.6); line-height: 1.35; color: var(--dim); overflow-y: auto; scrollbar-width: none; max-height: 100%; width: 100%; }
   .report b { color: var(--text); }
+  /* interactive landscape */
+  .land { display: grid; grid-template-columns: repeat(8, 1fr); gap: calc(var(--u) * 1); width: 100%; }
+  .land .lc { display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: calc(var(--u) * 1.6);
+    background: #141414; border: calc(var(--u) * .45) solid #262626; padding: calc(var(--u) * 1.4) 0; transition: background .08s; }
+  .land .lc b { font-size: calc(var(--u) * 8); font-weight: 900; line-height: 1; }
+  .land .lc small { font-size: calc(var(--u) * 3.4); color: var(--dim); font-weight: 700; margin-top: calc(var(--u) * .6); white-space: nowrap; }
+  .land .lc.home { border-color: var(--accent); }
+  .land .lc.home b { color: var(--accent); }
+  .land .lc.off { opacity: .32; }
+  .land .lc.lit { background: var(--focus); border-color: var(--focus); opacity: 1; }
+  .land .lc.lit b, .land .lc.lit small { color: #000; }
+  .land .lc.rev { border-color: var(--listen); box-shadow: 0 0 0 calc(var(--u) * .4) var(--listen); opacity: 1; }
+  .stage.compact .land .lc b { font-size: calc(var(--u) * 6.5); }
+  .stage.compact .land .lc { padding: calc(var(--u) * .9) 0; }
+  .scroll button.locked { opacity: .45; }
   .wk { color: var(--accent); font-size: calc(var(--u) * 3.6); font-weight: 800; letter-spacing: .05em; margin-top: calc(var(--u) * 1.2); }
   .deg b { font-size: calc(var(--u) * 14); line-height: 1; font-weight: 900; }
   .seq.single .deg b { font-size: calc(var(--u) * 20); }
@@ -157,7 +172,8 @@
     <button id="bMinutes">⏱ 30 min</button><button id="bKey">Key C</button><button id="bTest">🔊 Test</button>
   </div>
   <div class="spacer"></div>
-  <div class="row3w"><button id="bStart" class="go">▶ Start lesson</button><button id="bLessons">Lessons</button><button id="bGuide">📖 Guide</button></div>
+  <div class="row3"><button id="bLessons">Lessons</button><button id="bGuide">📖 Guide</button><button id="bLand">🎹 Landscape</button></div>
+  <button id="bStart" class="go">▶ Start lesson</button>
 </section>
 
 <!-- LESSON -->
@@ -167,6 +183,7 @@
   <div class="bar"><i id="lBar"></i></div>
   <div class="stage" id="lStage">
     <div class="chordbox hidden" id="lChord"></div>
+    <div class="land hidden" id="lLand"></div>
     <div class="seq" id="lSeq"></div>
     <div class="rhythm hidden" id="lRhythm"></div>
     <div class="fing hidden" id="lFing"></div>
@@ -185,6 +202,16 @@
   <div class="scroll" id="lList"></div>
   <div class="stats" id="lStats"></div>
   <div class="row3"><button id="bSound">🔉 Low</button><button id="bCues">🗣 Cues off</button><button id="bWipe">🗑 Reset</button></div>
+</section>
+
+<!-- LANDSCAPE PRACTICE -->
+<section id="lp" class="screen">
+  <div class="top"><h1 class="brand" style="font-size:calc(var(--u)*5.2)">🎹 Landscape <span>Practice</span></h1></div>
+  <div class="motto">See &amp; hear → recognise → imagine &amp; sing → imagine &amp; play → create</div>
+  <div class="row3"><button id="lpDisplay">👁 Full</button><button id="lpHome">🏠 Every try</button><button id="lpWait">⏱ 8 s</button></div>
+  <div class="row3"><button id="lpDrone">〰 Drone on</button><button id="lpInst">🎸 Guitar</button><button id="lpMin">⏱ 30 min</button></div>
+  <div class="scroll" id="lpList"></div>
+  <button id="lpStart" class="go">▶ Start Stage 1</button>
 </section>
 
 <!-- QUICK REFERENCE GUIDE -->
@@ -219,10 +246,10 @@ const store = {
 const DEFAULT_PROFILE = { v: 1, current: 'W01D01', instrument: 'guitar', minutes: 30, key: '', soundHigh: false, cues: false,
   done: {}, history: [], ear: {}, chords: {}, reflections: [], prefs: {}, song: null, review: [] };
 let P = Object.assign({}, DEFAULT_PROFILE, store.get('intuition.profile', {}));
-P.chords = P.chords || {}; P.prefs = P.prefs || {}; P.review = P.review || [];
+P.chords = P.chords || {}; P.prefs = P.prefs || {}; P.review = P.review || []; P.find = P.find || {};
 const saveP = () => store.set('intuition.profile', P);
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const lessonById = id => LESSONS.find(l => l.lesson_id === id) || LESSONS[0];
+const lessonById = id => String(id).startsWith('LP') ? practiceLesson(+String(id).slice(2)) : (LESSONS.find(l => l.lesson_id === id) || LESSONS[0]);
 const nextLessonOf = l => LESSONS[LESSONS.indexOf(l) + 1] || null;
 
 /* ======================================================================
@@ -239,7 +266,7 @@ const ACC = { '-2': '𝄫', '-1': '♭', '0': '', '1': '♯', '2': '𝄪' };
 const pretty = k => k[0] + k.slice(1).replace('#', '♯').replace('b', '♭');
 
 let L = null;   // the lesson in progress (see startLesson)
-const curLesson = () => L ? L.lesson : lessonById(P.current);
+const curLesson = () => L ? L.lesson : (LESSONS.find(l => l.lesson_id === P.current) || LESSONS[0]);
 // Key: your Home choice, else this exercise's key (Day 44 moves a tune to G and F), else the lesson's; 'song' = the key you chose for your song
 const resolveKey = k => k === 'song' ? ((P.song && P.song.key) || 'C') : k;
 const concertKey = () => resolveKey(P.key || (L && L.ex && L.ex.key) || curLesson().concert_key || 'C');
@@ -384,7 +411,9 @@ function playDegs(degs, t, spb = 0.9) { degs.forEach((d, i) => pluck(degMidi(d),
 
 // Drone: the tonic, held. Survives between exercises so home never drops out.
 function droneOn(level = 0.22) {
-  audio(); const c = A.ac, m = tonicMidi() + shift();
+  audio();
+  if (pref('drone') === false) { droneOff(); return; }   // Karen's Drone Off switch
+  const c = A.ac, m = tonicMidi() + shift();
   if (A.drone && A.drone.m === m) { A.drone.g.gain.setTargetAtTime(level, c.currentTime, 0.3); return; }
   droneOff(true);
   const f = mtof(m), g = c.createGain(), lp = c.createBiquadFilter();
@@ -520,7 +549,7 @@ const F = () => (P.minutes || 30) / 30;                                    // se
 const scaleSec = s => Math.max(20, Math.round((s || 60) * F()));
 const scaleN = n => Math.max(1, Math.round((n || 1) * F()));
 const tempo = () => (L ? (L.ex && L.ex.tempo) || L.lesson.tempo_bpm || 65 : 65) * S.tempoMul;   // an exercise can set its own tempo
-const PLAYING = ['tune', 'warmup', 'find_note', 'rhythm_echo', 'question_answer', 'play_rest', 'chord_tones', 'listen_sing_play', 'random_note_recognition', 'free_improvisation'];
+const PLAYING = ['land_talk', 'tune', 'warmup', 'find_note', 'rhythm_echo', 'question_answer', 'play_rest', 'chord_tones', 'listen_sing_play', 'random_note_recognition', 'free_improvisation'];
 function instFor(ex, el, dur) {
   if (ex._split) return el < dur / 2 ? 'guitar' : 'sax';
   return ex._inst || null;
@@ -623,23 +652,26 @@ function ChordRecogRunner(ex) {
     const len = progs ? (item.forEach((sym, k) => strum(sym, t + k * r.each, r.each * 0.95)), item.length * r.each) : strum(item[0], t, spb * 2, spb / 2.5);
     r.pe = t + len + 0.3; stage = 'play';
   }
+  function reveal() { stage = 'shown'; play(false); stage = 'shown'; }
   r.begin = () => { backingStop(); droneOff(); i = 0; item = gen(); play(ex.context !== false); };
   r.update = t => {
-    if (stage === 'play' && t >= r.pe) stage = 'answer';
-    const active = stage === 'play' && progs && t >= r.ps ? Math.min(item.length - 1, Math.floor((t - r.ps) / r.each)) : -1;
+    if (stage === 'play' && t >= r.pe) { stage = 'answer'; const w = pref('wait'); r.deadline = typeof w === 'number' ? t + w : null; r.wlen = w; }
+    if (stage === 'answer' && r.deadline && t >= r.deadline) reveal();       // timed reveal, then the answer plays again
+    const active = (stage === 'play' || stage === 'shown') && progs && t >= r.ps && t < r.ps + item.length * r.each ? Math.min(item.length - 1, Math.floor((t - r.ps) / r.each)) : -1;
     let text = { play: progs ? 'Home chord, then listen to the changes…' : 'Home chord, then the mystery chord…',
       answer: quality ? 'Major, minor or diminished? Decide, then reveal.' : progs ? 'Which chords? Say the numbers in your head, then reveal.' : `Which one? ${pool.map(romanLabel).join(' · ')}`,
       shown: 'Were you right?' }[stage];
     if (hinted && stage !== 'shown') text += quality ? ' (major = bright, minor = darker, diminished = tense)' : '';
     r.ui = { phase: stage === 'shown' ? 'CHECK' : 'LISTEN', inst: instFor(ex, 0, 1), text, degs: null, beat: null,
       chordRow: item.map((sym, k) => ({ sym, on: k === active })), chordHidden: stage !== 'shown', quality,
-      ctx: stage === 'answer' ? [['reveal', '👁 Reveal'], ['replay', '↻ Hear again']] : stage === 'shown' ? [['right', '✓ I had it'], ['miss', '✗ Missed it']] : null,
+      ctx: stage === 'answer' ? (r.deadline ? [['hear', '↻ Hear again']] : [['hear', '↻ Hear again'], ['reveal', '👁 Reveal']]) : stage === 'shown' ? [['right', '✓ I had it'], ['miss', '✗ Missed it'], ['replay', '↻ Hear again']] : null,
+      remain: stage === 'answer' && r.deadline ? r.deadline - t : null, total: r.wlen, revealed: stage === 'shown',
       item: `${i + 1} of ${n}` };
     return false;
   };
   r.action = a => {
-    if (a === 'reveal') stage = 'shown';
-    else if (a === 'replay' || a === 'repeat') play(ex.context !== false);
+    if (a === 'reveal') { if (stage === 'answer' && !r.deadline) reveal(); }
+    else if (a === 'hear' || a === 'replay' || a === 'repeat') { const was = stage; play(ex.context !== false); if (was === 'shown') stage = 'shown'; }
     else if (a === 'hint') { hinted = true; play(true); }
     else if (a === 'right' || a === 'miss') {
       const key = progs ? 'progressions' : quality ? chordQuality(item[0]) : romanLabel(item[0]), e = P.chords[key] || [0, 0];
@@ -773,56 +805,221 @@ function CallResponseRunner(ex) {
   return r;
 }
 
-/* Listen → sing → play, one phrase at a time, then Got it / Again.
-   Phrases come from ex.phrases (fixed), ex.melody (a lesson melody, see lessons.js "melodies") or ex.random (generated).
-   Random phrases adapt: three first-try successes add a note; two Agains on one phrase take a note away.
-   mode 'imagine': read the numbers and imagine first, sing, then hear it and compare, then play.
-   fade_hints: first third shows everything, middle third only the first note, last third nothing until you check. */
+/* ======================================================================
+   Ear-training settings (Karen's choices, used by Landscape Practice AND the 60-day course)
+     display : 'full' (numbers + note names) | 'numbers' | 'hidden' (audio only until the answer is revealed)
+     homeRef : 'every' (home before every attempt) | 'exercise' (once per exercise) | 'request' (🏠 Home button only)
+     wait    : 6 | 8 | 12 | 20 | 'manual'  — response window before the automatic reveal + replay
+     drone   : true | false  — the quiet tonic drone
+   The learner chooses; nothing changes automatically with accuracy.
+   ====================================================================== */
+const PREF_DEFAULTS = { display: 'full', homeRef: 'every', wait: 8, drone: true };
+const pref = k => (P.prefs && P.prefs[k] != null ? P.prefs[k] : PREF_DEFAULTS[k]);
+const setPref = (k, v) => { P.prefs = Object.assign({}, P.prefs, { [k]: v }); saveP(); };
+const DISPLAY_LABEL = { full: 'Full', numbers: 'Numbers', hidden: 'Hidden' };
+const HOME_LABEL = { every: 'Every try', exercise: 'Start only', request: 'On request' };
+const WAITS = [6, 8, 12, 20, 'manual'];
+const waitLabel = w => (w === 'manual' ? 'Manual' : `${w} s`);
+
+/* ---------------- the interactive musical landscape ----------------
+   1 2 3 4 5 6 7 1 (or 1 2 ♭3 4 5 ♭6 ♭7 1 in minor lessons), lit in sync with the tone you hear.
+   Runners record every tone they schedule in r.lights ({t, e, d, tag}); the row lights whatever is sounding now. */
+const LAND_MAJOR = [1, 2, 3, 4, 5, 6, 7, 8], LAND_MINOR = [1, 2, 'b3', 4, 5, 'b6', 'b7', 8];
+const landCells = () => (isMinorish() ? LAND_MINOR : LAND_MAJOR);
+const pc12 = d => ((degSemis(d) % 12) + 12) % 12;
+function landIndex(d) {   // which cell a degree lights (octave-equivalent; the top cell is home an octave up)
+  if (d == null || d === 'r') return -1;
+  if (degNum(d) === 8 && parseDeg(d).a === 0) return 7;
+  return landCells().findIndex((c, k) => k < 7 && pc12(c) === pc12(d));
+}
+const landFits = degs => (degs || []).every(d => d === 'r' || landIndex(d) >= 0);
+// Play single tones one after another (default 700 ms tone + 200 ms gap) and log them for the lights.
+function playLit(r, degs, t, o = {}) {
+  const step = (o.step || 0.9) / S.tempoMul, len = Math.min(step * 0.85, (o.len || 0.7) / S.tempoMul);
+  degs.forEach((d, i) => {
+    if (d === 'r') return;
+    pluck(degMidi(d), t + i * step, len, o.vol || 0.5);
+    r.lights.push({ t: t + i * step, e: t + i * step + len, d, tag: o.tag || '' });
+  });
+  return t + degs.length * step;
+}
+const litNow = (r, t) => r.lights.find(l => t >= l.t && t < l.e) || null;
+/* UI for the row. o.pool = degrees in play (others dim); o.hideTarget = don't light 'target' tones (recognition before reveal);
+   o.reveal = degrees to mark as the answer (always shown with number + name). */
+function landUI(r, t, o = {}) {
+  const lvl = pref('display'), lit = litNow(r, t), revealed = (o.reveal || []).map(landIndex);
+  let li = lit ? landIndex(lit.d) : -1;
+  if (lit && lit.tag === 'target' && o.hideTarget) li = -1;
+  if (lvl === 'hidden' && !(lit && lit.tag === 'answer')) li = -1;          // audio only until the answer
+  return { lvl, li, pool: (o.pool || landCells()).map(landIndex), revealed, guided: !!o.guided };
+}
+
+/* 1 · See and hear: home, then sequences one tone at a time, each number lighting as it sounds. */
+function SeeHearRunner(ex) {
+  const r = { ui: {}, lights: [] }, dur = scaleSec(ex.duration_seconds || 300), seqs = ex.sequences || [{ degs: [1, 2, 3, 4, 5, 6, 7, 8] }];
+  let k = -1, nextAt = 0, cur = seqs[0];
+  r.begin = () => { newBus(); backingStop(); if (ex.drone !== false) droneOn(0.1); else droneOff(); r.t0 = now(); k = -1; nextAt = r.t0 + 0.3; r.lights = []; };
+  r.update = t => {
+    const el = t - r.t0;
+    if (t >= nextAt) {
+      if (el >= dur) return true;
+      k = (k + 1) % seqs.length; cur = seqs[k]; r.lights = [];
+      let tt = t + 0.1;
+      if (cur.home !== false) tt = playLit(r, [1], tt, { tag: 'home' }) + 0.5;
+      tt = playLit(r, cur.degs, tt, { step: cur.step || ex.step });
+      nextAt = tt + (ex.pause || 1.8);
+    }
+    const inst = instFor(ex, 0, 1);
+    r.ui = { phase: cur.phase || 'LISTEN', inst, text: fill(cur.text || 'Watch and listen. Sing along if you like.', inst), degs: null,
+      land: landUI(r, t, { pool: ex.pool }), remain: Math.max(0, dur - el), total: dur };
+    return false;
+  };
+  r.action = a => { if (a === 'repeat') r.begin(); };
+  return r;
+}
+
+/* 2 · Recognise musical relationships (shared with the course's "which number?" rounds).
+   INTRO → HOME (per setting) → TARGET (hidden) → RESPONSE WINDOW (timer; ↻ Hear again restarts it)
+   → REVEAL + REPLAY → you mark what went well (👂 heard it / 🎸 found it — both optional) → NEXT TRIAL.
+   The answer is never shown before the reveal: 👁 Show and "give me a hint" cannot reveal it. */
+function RecogRunner(ex) {
+  const r = { ui: {}, lights: [] }, allowed = ex.allowed_degrees || [1, 5];
+  const blocks = ex.blocks || [{ length: ex.phrase_length || 1, trials: ex.trials || 10 }];
+  const queue = []; blocks.forEach(b => { for (let k = 0; k < scaleN(b.trials); k++) queue.push(b.length); });
+  let i = 0, stage = 'play', ph = [1], prev = '', heard = false, found = false, hinted = false;
+  const homeMode = () => ex.home || pref('homeRef'), wait = () => ex.wait || pref('wait');
+  function gen(n) {
+    let p, tries = 0;
+    do { p = Array.from({ length: n }, () => allowed[Math.floor(Math.random() * allowed.length)]); tries++; } while (p.join() === prev && tries < 12);
+    prev = p.join(); return p;
+  }
+  function play(withHome) {
+    newBus(); r.lights = []; let t = now() + 0.15;
+    if (withHome) t = playLit(r, [1], t, { tag: 'home' }) + 0.6;
+    r.pe = playLit(r, ph, t, { tag: 'target' }); stage = 'play'; r.deadline = null;
+  }
+  function trial(first) { ph = gen(queue[i]); heard = found = hinted = false; const m = homeMode(); play(m === 'every' || (m === 'exercise' && first)); }
+  function reveal() { stage = 'shown'; r.lights = []; playLit(r, ph, now() + 0.25, { tag: 'answer' }); }
+  r.begin = () => { backingStop(); droneOn(0.14); i = 0; trial(true); };
+  r.update = t => {
+    if (stage === 'play' && t >= r.pe + 0.15) { stage = 'answer'; const w = wait(); r.deadline = typeof w === 'number' ? t + w : null; r.wlen = w; }
+    if (stage === 'answer' && r.deadline && t >= r.deadline) reveal();
+    const inst = instFor(ex, 0, 1), iname = inst === 'sax' ? 'sax' : inst === 'guitar' ? 'guitar' : 'instrument';
+    let phase = 'LISTEN', text = 'Listen… which number?', ctx = null;
+    if (stage === 'answer') {
+      phase = 'SING'; text = `Which number? Sing it, then find it on your ${iname}.`;
+      if (hinted) text += ` (one of ${allowed.map(degText).join(' · ')})`;
+      ctx = [['hear', '↻ Hear again']];
+      if (homeMode() !== 'every') ctx.push(['home', '🏠 Home']);
+      if (!r.deadline) ctx.push(['reveal', '👁 Reveal']);
+    }
+    if (stage === 'shown') {
+      phase = 'CHECK'; text = `It was ${ph.map(degText).join(' ')}. Compare. Mark what went well, then Next.`;
+      ctx = [['heard', `👂 Heard it${heard ? ' ✓' : ''}`], ['found', `${inst === 'sax' ? '🎷' : '🎸'} Found it${found ? ' ✓' : ''}`], ['next', 'Next ▶']];
+    }
+    r.ui = { phase, inst, text, degs: stage === 'shown' ? ph : null, hidden: stage !== 'shown', lock: true, revealed: stage === 'shown', ctx,
+      land: landFits(allowed) ? landUI(r, t, { pool: allowed, hideTarget: stage !== 'shown', reveal: stage === 'shown' ? ph : [] }) : null,
+      remain: stage === 'answer' && r.deadline ? r.deadline - t : null, total: r.wlen, item: `${i + 1} of ${queue.length}` };
+    if (!r.ui.land && stage !== 'shown') r.ui.degs = ph;    // degrees outside the landscape (e.g. ♭5): the old "?" boxes
+    return false;
+  };
+  function record() {
+    ph.forEach(d => {
+      const e = P.ear[d] || [0, 0]; e[1]++; if (heard) e[0]++; P.ear[d] = e;
+      const f = P.find[d] || [0, 0]; f[1]++; if (found) f[0]++; P.find[d] = f;
+    });
+    saveP();
+  }
+  r.action = a => {
+    if (a === 'hear' || a === 'replay' || a === 'repeat') { if (stage !== 'shown') play(homeMode() === 'every'); else { r.lights = []; playLit(r, ph, now() + 0.15, { tag: 'answer' }); } }
+    else if (a === 'home') { r.lights = r.lights.filter(l => l.tag !== 'home'); playLit(r, [1], now() + 0.05, { tag: 'home' }); }
+    else if (a === 'reveal') { if (stage === 'answer' && !r.deadline) reveal(); }                    // manual mode only
+    else if (a === 'hint') { hinted = true; if (stage !== 'shown') { r.lights = []; playLit(r, [1], now() + 0.05, { tag: 'home' }); } }   // home + the choices, never the answer
+    else if (a === 'heard') heard = !heard;
+    else if (a === 'found') found = !found;
+    else if (a === 'right' || a === 'miss' || a === 'next') {
+      if (stage !== 'shown') { if (a === 'next') return; reveal(); }
+      if (a === 'right') heard = true;
+      record(); i++;
+      if (i >= queue.length) return 'next';
+      trial(false);
+    }
+  };
+  return r;
+}
+
+/* 3–4 · Listen → sing → play, one phrase at a time (shared with the course).
+   Stages run one after another; each starts its audio when it begins, so Hear again / manual reveal fit in naturally:
+     home (per setting) → [imagine → sing] → call → sing → play → [replay + reveal if the phrase was hidden] → check.
+   ex.response: 'pref' = one "sing it, then play it" window of the chosen length (or until you press Reveal in Manual).
+   Phrases: ex.phrases (fixed), ex.melody, ex.random (adaptive); items can carry chord, dyn, artic, swing, start. */
 function PhraseRunner(ex) {
-  const r = { ui: {} }, reps = scaleN(ex.repetitions || 1), rnd = ex.random ? Object.assign({}, ex.random) : null, imagine = ex.mode === 'imagine';
+  const r = { ui: {}, lights: [] }, reps = scaleN(ex.repetitions || 1), rnd = ex.random ? Object.assign({}, ex.random) : null, imagine = ex.mode === 'imagine';
   const items = [];
   if (rnd) { for (let k = 0; k < scaleN(rnd.count || 8); k++) items.push(null); }
   else { const src = ex.melody ? [melody(ex.melody)] : (ex.phrases || [ex.phrase || [1]]).map(asItem); src.forEach(x => { for (let k = 0; k < reps; k++) items.push(x); }); }
   let it = 0, len = rnd ? (rnd.length || 3) : 0, streak = 0, tries = 0;
   const minL = rnd ? (rnd.min_length || Math.max(1, len - 1)) : 0, maxL = rnd ? (rnd.max_length || len + 1) : 0;
   const itemAt = () => items[it] || (items[it] = genPhrase(rnd, len));
-  function startItem() {
-    newBus(); const spb = 60 / tempo(), item = itemAt(), n = item.degs.length;
-    const beats = item.durs.reduce((a, b) => a + b, 0) + (item.start || 0), resp = ex.response_seconds || Math.max(4, beats * spb + 2);
-    if (ex.swing && !item.swing) item.swing = true;
-    let t = now() + 0.15; const st = [];
-    const add = (name, l) => { st.push({ name, end: t + l }); t += l; };
-    const t0 = t;
-    const cc = item.chord || ex.context_chord;   // a phrase can be heard against its chord instead of the home note
-    if (cc) add('home', strum(cc, t, spb * 2) + 0.3); else { pluck(degMidi(1), t, spb * 0.9, 0.3); add('home', 2 * spb); }
-    if (imagine) { add('imagine', ex.imagine_seconds || Math.max(5, n * 1.6)); add('sing', resp); }
-    const callAt = t; playItem(item, callAt, spb); add('call', beats * spb + 0.4);
-    if (!imagine && !ex.no_sing) add('sing', resp);
-    add('play', resp);
-    Object.assign(r, { st, item, spb, callAt, t0, end: t });
+  const homeMode = () => ex.home || pref('homeRef');
+  // is this phrase hidden while you listen? (exercise asks for it, fading hints say so, or you chose the Hidden display)
+  const hiddenNow = () => !imagine && (ex.hide_answer || (ex.fade_hints && it / Math.max(1, items.length) >= 2 / 3) || (pref('display') === 'hidden' && !ex.guided));
+  function build() {
+    const spb = 60 / tempo(), item = r.item, beats = item.durs.reduce((a, b) => a + b, 0) + (item.start || 0), callLen = beats * spb + 0.4;
+    const w = pref('wait'), single = ex.response === 'pref';
+    const resp = single ? (typeof w === 'number' ? w : Infinity) : (ex.response_seconds || Math.max(4, beats * spb + 2));
+    const cc = item.chord || ex.context_chord, st = [];
+    const wantHome = cc || ex.home === 'always' || homeMode() === 'every' || (homeMode() === 'exercise' && it === 0 && tries === 0);
+    if (wantHome) st.push({ name: 'home', len: cc ? spb * 2 + 0.3 : 2 * spb, go: t => { if (cc) strum(cc, t, spb * 2); else { r.lights.push({ t, e: t + spb * 0.9, d: 1, tag: 'home' }); pluck(degMidi(1), t, spb * 0.9, 0.3); } } });
+    if (imagine) { st.push({ name: 'imagine', len: ex.imagine_seconds || Math.max(5, item.degs.length * 1.6) }); st.push({ name: 'sing', len: single ? resp : resp }); }
+    const callGo = tag => t => { r.callAt = t; playItem(item, t, spb); let off = item.start || 0; item.degs.forEach((d, i) => { const b = item.durs[i] || 1; if (d !== 'r') r.lights.push({ t: t + off * spb, e: t + (off + b * 0.92) * spb, d, tag }); off += b; }); };
+    st.push({ name: 'call', len: callLen, go: callGo('target') });
+    if (single && !imagine) st.push({ name: 'respond', len: resp });
+    else { if (!imagine && !ex.no_sing) st.push({ name: 'sing', len: resp }); st.push({ name: 'play', len: resp }); }
+    r.hid = hiddenNow();
+    if (r.hid || ex.replay) st.push({ name: 'replay', len: callLen, go: callGo('answer') });   // reveal + replay to compare
+    st.push({ name: 'check', len: Infinity });
+    r.st = st; r.spb = spb;
   }
-  function mask(stage) {
-    const n = r.item.degs.length;
-    if (stage === 'check' || imagine) return null;
-    if (ex.hide_answer) return Array(n).fill(true);
-    if (ex.fade_hints) { const f = it / Math.max(1, items.length); if (f >= 2 / 3) return Array(n).fill(true); if (f >= 1 / 3) return r.item.degs.map((_, i) => i > 0); }
-    return null;
+  function startItem() { newBus(); r.lights = []; r.item = itemAt(); build(); r.si = -1; r.stEnd = now() + 0.15; r.t0 = r.stEnd; }
+  function advance(t) {            // move through stages; each one starts its audio when it begins
+    while (r.si < r.st.length - 1 && t >= r.stEnd) {
+      r.si++; const s = r.st[r.si], at = Math.max(t, r.stEnd);
+      r.stStart = at; r.stEnd = at + s.len; if (s.go) s.go(at);
+    }
   }
+  r.jump = name => { const k = r.st.findIndex(s => s.name === name); if (k < 0) return; r.si = k - 1; r.stEnd = now(); advance(now()); };   // tests & manual reveal
   r.begin = () => { backingStop(); if (ex.drone) droneOn(ex.drone_level || 0.1); else droneOff(); it = 0; startItem(); };
   r.update = t => {
-    const inst = instFor(ex, 0, 1), cur = r.st.find(s => t < s.end), stage = cur ? cur.name : 'check';
+    advance(t);
+    const inst = instFor(ex, 0, 1), s = r.st[Math.max(0, r.si)], stage = r.si < 0 ? 'home' : s.name;
     let active = -1;
-    if (stage === 'call') { let off = (t - r.callAt) / r.spb - (r.item.start || 0); if (off >= 0) for (let i = 0; i < r.item.durs.length; i++) { if (off < r.item.durs[i]) { active = i; break; } off -= r.item.durs[i]; } }
+    if ((stage === 'call' || stage === 'replay') && r.callAt != null) { let off = (t - r.callAt) / r.spb - (r.item.start || 0); if (off >= 0) for (let i = 0; i < r.item.durs.length; i++) { if (off < r.item.durs[i]) { active = i; break; } off -= r.item.durs[i]; } }
     const T = {
-      home: ['LISTEN', (r.item.chord || ex.context_chord) ? 'The chord…' : 'Home note…'],
+      home: ['LISTEN', r.item.chord || ex.context_chord ? 'The chord…' : 'Home…'],
       imagine: ['IMAGINE', "Read it. Hear it in your head. Don't sing yet."],
       sing: ['SING', ex.sing_text || (imagine ? 'Sing what you imagined.' : 'Sing it back.')],
       call: ['LISTEN', ex.listen_text || (imagine ? 'Now listen. Did it match?' : 'Listen…')],
+      respond: ['SING', fill(ex.respond_text || 'Sing it, then play it on {inst}.', inst)],
       play: ['PLAY', playText(ex, inst)],
+      replay: ['LISTEN', 'Here it is again — compare.'],
       check: ['CHECK', ex.check_text || (imagine ? 'Did your imagined version match?' : 'How did that go?')],
     }[stage];
-    r.ui = { phase: T[0], inst, text: T[1], degs: r.item.degs, active, mask: mask(stage), chordRow: (r.item.chord || ex.context_chord) ? [{ sym: r.item.chord || ex.context_chord }] : null, remain: stage === 'check' ? null : r.end - t, total: r.end - r.t0,
-      ctx: stage === 'check' ? [['got', imagine ? '✓ It matched' : '✓ Got it'], ['again', '↻ Again']] : null, item: `${it + 1} of ${items.length}` };
+    const shown = stage === 'replay' || stage === 'check', n = r.item.degs.length;
+    let mask = null;
+    if (!shown && !imagine) {
+      if (r.hid) mask = Array(n).fill(true);
+      else if (ex.fade_hints && it / Math.max(1, items.length) >= 1 / 3) mask = r.item.degs.map((_, i) => i > 0);
+    }
+    const waiting = stage === 'respond' || stage === 'sing' || stage === 'play';
+    let ctx = null;
+    if (stage === 'check') ctx = [['got', imagine ? '✓ It matched' : '✓ Got it'], ['again', '↻ Again']];
+    else if (waiting && (r.hid || stage === 'respond')) { ctx = [['hear', '↻ Hear again']]; if (homeMode() !== 'every') ctx.push(['home', '🏠 Home']); if (s.len === Infinity) ctx.push(['reveal', '👁 Reveal']); }
+    const useLand = ex.land !== false && !(r.item.chord || ex.context_chord) && landFits(r.item.degs);
+    r.ui = { phase: T[0], inst, text: T[1], degs: r.item.degs, active, mask, lock: !!r.hid, revealed: shown,
+      land: useLand ? landUI(r, t, { pool: ex.pool, hideTarget: !!r.hid && !shown, reveal: stage === 'check' && r.hid ? r.item.degs : [] }) : null,
+      showSeq: true, chordRow: (r.item.chord || ex.context_chord) ? [{ sym: r.item.chord || ex.context_chord }] : null,
+      remain: s && isFinite(s.len) && r.stEnd ? Math.max(0, r.stEnd - t) : null, total: s && isFinite(s.len) ? s.len : null, ctx, item: `${it + 1} of ${items.length}` };
     return false;
   };
   r.action = a => {
@@ -831,76 +1028,99 @@ function PhraseRunner(ex) {
       it++; tries = 0; if (it >= items.length) return 'next'; startItem();
     } else if (a === 'again' || a === 'repeat') {
       if (a === 'again') tries++;
-      if (rnd && tries >= 2 && len > minL) { len--; streak = 0; tries = 0; items[it] = null; }   // struggling: try a shorter phrase
+      if (rnd && tries >= 2 && len > minL) { len--; streak = 0; tries = 0; items[it] = null; }   // struggling: a shorter phrase
       startItem();
-    } else if (a === 'hint') { S.tempoMul = Math.max(0.5, S.tempoMul * 0.85); startItem(); }
+    } else if (a === 'hear') { const keep = tries; startItem(); tries = keep; }             // hearing it again is learning, not failing
+    else if (a === 'home') { r.lights.push({ t: now() + 0.05, e: now() + 0.75, d: 1, tag: 'home' }); pluck(degMidi(1), now() + 0.05, 0.7, 0.4); }
+    else if (a === 'reveal') { if (r.st[r.si] && r.st[r.si].len === Infinity && r.st[r.si].name !== 'check') { r.stEnd = now(); advance(now()); } }
+    else if (a === 'hint') { S.tempoMul = Math.max(0.5, S.tempoMul * 0.85); startItem(); }
   };
   return r;
 }
 
-function RecogRunner(ex) {
-  const r = { ui: {} }, allowed = ex.allowed_degrees || [1, 5];
-  const blocks = ex.blocks || [{ length: ex.phrase_length || 1, trials: ex.trials || 10 }];
-  const queue = []; blocks.forEach(b => { for (let k = 0; k < scaleN(b.trials); k++) queue.push(b.length); });
-  let i = 0, stage = 'play', ph = [1], prev = '', misses = 0, hinted = false;
-  function gen(n) {
-    let p, tries = 0;
-    do { p = Array.from({ length: n }, () => allowed[Math.floor(Math.random() * allowed.length)]); tries++; } while (p.join() === prev && tries < 12);
-    prev = p.join(); return p;
+/* 5 · Musical conversation: the glasses ask a short question from the stage's notes; you invent an answer.
+   Home is replayed between attempts (per the Home setting). Nothing is marked — it's free creation. */
+function ConversationRunner(ex) {
+  const r = { ui: {}, lights: [] }, dur = scaleSec(ex.duration_seconds || 300), pool = ex.pool || [1, 3, 5];
+  let q = [1, 3, 5], nextAt = 0, answerAt = 0, n = 0;
+  const homeMode = () => ex.home || pref('homeRef');
+  function ask(t) {
+    r.lights = []; n++;
+    q = ex.questions && n <= ex.questions.length ? ex.questions[n - 1] : genPhrase({ degrees: pool, max_leap: 3 }, 3 + Math.floor(Math.random() * 2));
+    let tt = t + 0.1;
+    if (homeMode() === 'every' || (homeMode() === 'exercise' && n === 1)) tt = playLit(r, [1], tt, { tag: 'home' }) + 0.5;
+    answerAt = playLit(r, q, tt, { tag: 'q' }) + 0.2;
+    nextAt = answerAt + (ex.answer_seconds || 10);
   }
-  function play(withHome) {
-    newBus(); const spb = 60 / tempo(); let s = now() + 0.15;
-    if (withHome) { pluck(degMidi(1), s, spb * 0.9, 0.3); s += 2 * spb; }
-    ph.forEach((d, k) => pluck(degMidi(d), s + k * spb, spb * 0.9));
-    r.ps = s; r.pe = s + ph.length * spb + 0.3; r.spb = spb; stage = 'play';
-  }
-  function trial() { ph = gen(queue[i]); hinted = false; play(i === 0 || misses >= 2); }   // replay home after two misses in a row
-  r.begin = () => { backingStop(); droneOn(0.14); i = 0; misses = 0; trial(); };
+  r.begin = () => { newBus(); backingStop(); if (ex.drone !== false) droneOn(0.1); else droneOff(); r.t0 = now(); n = 0; ask(r.t0); };
   r.update = t => {
-    let phase = 'LISTEN', text = 'Listen… which number?', ctx = null, active = -1, hidden = true;
-    if (stage === 'play' && t >= r.pe) stage = 'answer';
-    if (stage === 'play' && t >= r.ps) active = Math.min(ph.length - 1, Math.floor((t - r.ps) / r.spb));
-    if (stage === 'answer') { phase = 'SING'; text = 'Sing or play it back. Then reveal.'; ctx = [['reveal', '👁 Reveal'], ['replay', '↻ Hear again']]; }
-    if (stage === 'shown') { phase = 'CHECK'; hidden = false; text = 'Were you right?'; ctx = [['right', '✓ I had it'], ['miss', '✗ Missed it']]; }
-    if (hinted && stage !== 'shown') text += ` (one of ${allowed.join(' · ')})`;
-    r.ui = { phase, inst: instFor(ex, 0, 1), text, degs: ph, active, hidden, ctx, item: `${i + 1} of ${queue.length}` };
+    const el = t - r.t0;
+    if (t >= nextAt) { if (el >= dur) return true; ask(t); }
+    const answering = t >= answerAt, inst = instFor(ex, 0, 1);
+    r.ui = { phase: answering ? 'CREATE' : 'LISTEN', inst,
+      text: answering ? `Your answer — use ${pool.map(degText).join(' ')}. Rhythm, silence… end on 1.` : 'The question…',
+      degs: q, revealed: true, land: landFits(pool) ? landUI(r, t, { pool }) : null, showSeq: !answering,
+      remain: answering ? Math.max(0, nextAt - t) : null, total: ex.answer_seconds || 10,
+      ctx: answering && homeMode() !== 'every' ? [['home', '🏠 Home'], ['more', '⏭ New question']] : answering ? [['more', '⏭ New question']] : null, item: `Question ${n}` };
     return false;
   };
   r.action = a => {
-    if (a === 'reveal') stage = 'shown';
-    else if (a === 'replay' || a === 'repeat') play(false);
-    else if (a === 'hint') { hinted = true; play(true); }
-    else if (a === 'right' || a === 'miss') {
-      const ok = a === 'right';
-      ph.forEach(d => { const e = P.ear[d] || [0, 0]; e[1]++; if (ok) e[0]++; P.ear[d] = e; }); saveP();
-      misses = ok ? 0 : misses + 1; i++;
-      if (i >= queue.length) return 'next';
-      trial();
-    }
+    if (a === 'more' || a === 'repeat') ask(now());
+    if (a === 'home') playLit(r, [1], now() + 0.05, { tag: 'home' });
   };
   return r;
 }
 
+/* 6 · Reflect: how it felt, then a separate choice of what to do next. */
 function ReflectRunner() {
   const r = { ui: {} }; let feel = null;
   r.begin = () => { newBus(); droneOff(); backingStop(); feel = null; };
   r.update = () => {
-    const nx = nextLessonOf(L.lesson), day = L.lesson.day;
-    if (!feel) r.ui = { phase: 'REFLECT', text: 'How did today feel?', ctx: [['easy', 'Easy'], ['ok', 'Just right'], ['hard', 'Hard']] };
-    else {
-      let ctx = nx ? [['move', `Day ${nx.day} ▶`], ['stay', `Repeat Day ${day}`]] : [['stay', 'Finish']];
-      if (feel === 'hard' && nx) ctx = ctx.reverse();
-      r.ui = { phase: 'REFLECT', text: feel === 'hard' ? 'Hard means you are learning. What next time?' : 'Lovely. What next time?', ctx };
-    }
+    const practice = !!L.lesson.practice, nx = practice ? null : nextLessonOf(L.lesson);
+    if (!feel) r.ui = { phase: 'REFLECT', text: 'How did that feel?', ctx: [['easy', 'Easy'], ['ok', 'Just right'], ['practice', 'Needs practice']] };
+    else r.ui = { phase: 'REFLECT', text: feel === 'practice' ? 'Practice is how ears grow. What next?' : 'Lovely. What next?',
+      ctx: [['continue', practice ? (L.lesson.stage < 5 ? 'Continue ▶' : 'Finish ▶') : nx ? `Continue ▶` : 'Finish ▶'], ['rep_ex', '↻ Repeat exercise'], ['rep_lesson', '⟲ Repeat lesson']] };
     r.ui.degs = null; return false;
   };
-  r.action = a => { if (['easy', 'ok', 'hard'].includes(a)) { feel = a; return; } if (a === 'move' || a === 'stay') return { finish: true, feel, next: a }; };
+  r.action = a => {
+    if (['easy', 'ok', 'practice'].includes(a)) { feel = a; return; }
+    if (a === 'rep_ex') { let k = L.i - 1; while (k > 0 && L.exs[k].type === 'reflection') k--; return { jump: Math.max(0, k), feel }; }
+    if (a === 'continue' || a === 'rep_lesson') return { finish: true, feel, next: a };
+  };
   return r;
 }
 
 /* ======================================================================
-   Weeks 9–12 additions
+   🎹 Landscape Practice — a permanent playground beside the 60-day course.
+   Five stages (window.PRACTICE in lessons.js). A stage unlocks when you choose Continue at the end of the one before
+   (your choice, never an accuracy score); any unlocked stage can be revisited at any time.
    ====================================================================== */
+const LP = () => (P.lp = Object.assign({ unlocked: 1, stage: 1 }, P.lp || {}));
+function practiceLesson(stage) {
+  const pr = window.PRACTICE || { stages: [], build: () => [] }, st = pr.stages.find(s => s.stage === stage) || pr.stages[0];
+  return { lesson_id: 'LP' + st.stage, practice: true, stage: st.stage, week: 0, day: 0, title: `Landscape · Stage ${st.stage}`,
+    objective: st.goal, concert_key: 'C', scale: 'major', tempo_bpm: 65, duration_minutes: 30, exercises: pr.build(st) };
+}
+function renderLP() {
+  const lp = LP(), pr = window.PRACTICE || { stages: [] };
+  $('lpStart').textContent = `▶ Start Stage ${lp.stage}`;
+  $('lpDisplay').textContent = `👁 ${DISPLAY_LABEL[pref('display')]}`;
+  $('lpHome').textContent = `🏠 ${HOME_LABEL[pref('homeRef')]}`;
+  $('lpWait').textContent = `⏱ ${waitLabel(pref('wait'))}`;
+  $('lpDrone').textContent = `〰 Drone ${pref('drone') ? 'on' : 'off'}`;
+  $('lpInst').textContent = P.instrument === 'sax' ? '🎷 Sax' : P.instrument === 'both' ? '🎸+🎷 Both' : '🎸 Guitar';
+  $('lpMin').textContent = `⏱ ${P.minutes} min`;
+  $('lpList').innerHTML = pr.stages.map(s => {
+    const open = s.stage <= lp.unlocked;
+    return `<button data-st="${s.stage}" class="${s.stage === lp.stage ? 'sel' : ''}${open ? '' : ' locked'}">${open ? '' : '🔒 '}Stage ${s.stage} · ${esc(s.title)}<small>${open ? esc(s.goal) : `Opens when you choose Continue after Stage ${s.stage - 1}`}</small></button>`;
+  }).join('') + `<div class="stats">These settings also apply to the 60-day course.</div>`;
+  $('lpList').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const st = +b.dataset.st; if (st > LP().unlocked) return;
+    LP().stage = st; saveP(); startLesson('LP' + st, true);
+  });
+}
+function openLP() { renderLP(); go('lp', 'lpStart'); }
+
 // --- tunes (public-domain melodies live in lessons.js as window.TUNES) ---
 const tuneData = name => (window.TUNES || {})[name];
 // A tune phrase's chords: 'I' = one 4-beat bar, ['V','I'] = that bar split in half
@@ -1046,7 +1266,7 @@ function guideLine(syms) {
 
 const RUNNERS = { warmup: PromptRunner, drone_listening: PromptRunner, find_note: PromptRunner, free_improvisation: PromptRunner,
   rhythm_echo: CallResponseRunner, question_answer: CallResponseRunner, play_rest: CallResponseRunner, chord_tones: PromptRunner, chord_recognition: ChordRecogRunner,
-  tune: TuneRunner, choice: ChoiceRunner, report: ReportRunner, listen_sing_play: PhraseRunner, random_note_recognition: RecogRunner, reflection: ReflectRunner };
+  tune: TuneRunner, choice: ChoiceRunner, report: ReportRunner, land_see: SeeHearRunner, land_talk: ConversationRunner, listen_sing_play: PhraseRunner, random_note_recognition: RecogRunner, reflection: ReflectRunner };
 
 /* ======================================================================
    Lesson flow
@@ -1084,6 +1304,7 @@ function doAction(a) {
   if (!L || !L.r || S.paused) return;
   const res = L.r.action(a);
   if (res === 'next') nextEx();
+  else if (res && res.jump != null) { L.i = res.jump - 1; nextEx(); }      // Repeat exercise
   else if (res && res.finish) finishLesson(res);
   else { L.r.update(now()); render(); }
 }
@@ -1092,9 +1313,21 @@ function finishLesson(res) {
   const l = L.lesson, nx = nextLessonOf(l), minutes = Math.max(1, Math.round((now() - L.ac0) / 60));
   P.history.push({ id: l.lesson_id, date: todayISO(), minutes, instrument: P.instrument, feel: res.feel || '' });
   if (P.history.length > 300) P.history = P.history.slice(-300);
+  if (l.practice) {                                   // Landscape Practice: Continue opens the next stage (your choice)
+    const lp = LP();
+    if (res.next === 'continue' && l.stage < 5) { lp.unlocked = Math.max(lp.unlocked, l.stage + 1); lp.stage = l.stage + 1; }
+    saveP();
+    if (res.next === 'rep_lesson') { startLesson(l.lesson_id, true); return; }
+    endLesson();
+    $('dTitle').textContent = `Stage ${l.stage} done`;
+    $('dBody').innerHTML = `${minutes} min in the landscape. 🎹<br><br>Next time: <b>Stage ${LP().stage}</b>`;
+    history.replaceState({ screen: 'done', depth: (history.state && history.state.depth) || 1 }, '');
+    show('done', 'bHome'); return;
+  }
   P.done[l.lesson_id] = (P.done[l.lesson_id] || 0) + 1;
-  if (res.next === 'move' && nx) P.current = nx.lesson_id; else P.current = l.lesson_id;   // never moves on by calendar alone
+  if ((res.next === 'continue' || res.next === 'move') && nx) P.current = nx.lesson_id; else P.current = l.lesson_id;   // never moves on by calendar alone
   saveP();
+  if (res.next === 'rep_lesson') { startLesson(l.lesson_id, true); return; }
   endLesson();
   const cur = lessonById(P.current);
   $('dTitle').textContent = `Day ${l.day} done`;
@@ -1123,7 +1356,7 @@ const instLabel = i => i === 'sax' ? '🎷 Tenor sax' : i === 'guitar' ? '🎸 G
 function render() {
   if (!L || !L.r) return;
   const u = L.r.ui || {}, l = L.lesson;
-  $('lTitle').textContent = `Day ${l.day} · ${l.title} · ${keyLabel()}`;
+  $('lTitle').textContent = `${l.practice ? l.title : `Day ${l.day} · ${l.title}`} · ${keyLabel()}`;
   $('lStep').textContent = `${L.i + 1}/${L.exs.length}${u.item ? ' · ' + u.item : ''}`;
   const ph = S.paused ? 'PAUSED' : (u.phase || '');
   const pe = $('lPhase'); pe.textContent = PH_LABEL[ph] || ph; pe.className = 'phase ph-' + ph.replace(' ', '');
@@ -1136,8 +1369,9 @@ function render() {
   // long phrases (tunes): show an 8-note window that follows the note being played
   const W = 8, w0 = allDegs.length > W ? Math.max(0, Math.min(allDegs.length - W, (u.active >= 0 ? u.active : 0) - 3)) : 0;
   const degs = allDegs.slice(w0, w0 + W), act = u.active >= 0 ? u.active - w0 : -1, mk = u.mask ? u.mask.slice(w0, w0 + W) : null;
-  const hide = S.hideNotes || (u.hidden && !S.reveal);
-  const sk = JSON.stringify([allDegs, w0, act, hide, mk, S.reveal, u.inst, concertKey(), P.instrument]);
+  const hide = S.hideNotes || (u.hidden && (u.lock || !S.reveal));   // lock: a hidden answer can't be shown early
+  const namesOK = pref('display') === 'full' || u.revealed;           // Numbers / Hidden display: no note names until revealed
+  const sk = JSON.stringify([allDegs, w0, act, hide, mk, S.reveal, u.lock, namesOK, u.inst, concertKey(), P.instrument]);
   if (sk !== seq.dataset.k) {
     seq.dataset.k = sk;
     seq.className = 'seq' + (degs.length === 1 ? ' single' : degs.length > 6 ? ' lots' : degs.length > 4 ? ' many' : '') + (act >= 0 ? ' playing' : '');
@@ -1145,12 +1379,12 @@ function render() {
     seq.innerHTML = (w0 > 0 ? more : '') + degs.map((d, i) => {
       if (d === 'r') return `<div class="deg rest${i === act ? ' on' : ''}"><b>·</b><small>&nbsp;</small></div>`;
       const nm = u.inst ? noteName(d, u.inst) : (P.instrument === 'both' ? (degs.length > 3 ? `${noteName(d, 'guitar')}/${noteName(d, 'sax')}` : `🎸${noteName(d, 'guitar')} 🎷${noteName(d, 'sax')}`) : noteName(d, P.instrument));
-      const h = hide || (mk && mk[i] && !S.reveal);
-      return `<div class="deg${i === act ? ' on' : ''}"><b>${h ? '?' : degLabel(d)}</b><small>${h ? '&nbsp;' : esc(nm)}</small></div>`;
+      const h = hide || (mk && mk[i] && (u.lock || !S.reveal));
+      return `<div class="deg${i === act ? ' on' : ''}"><b>${h ? '?' : degLabel(d)}</b><small>${h || !namesOK ? '&nbsp;' : esc(nm)}</small></div>`;
     }).join('') + (w0 + W < allDegs.length ? more : '');
   }
   // fingering
-  const fi = u.active > 0 ? u.active : 0, fd = allDegs.length ? allDegs[fi] : null, wantF = (S.showFing || u.fingAuto) && fd != null && fd !== 'r' && !hide && !(u.mask && u.mask[fi] && !S.reveal);
+  const fi = u.active > 0 ? u.active : 0, fd = allDegs.length ? allDegs[fi] : null, wantF = (S.showFing || u.fingAuto) && fd != null && fd !== 'r' && !hide && !(u.mask && u.mask[fi] && (u.lock || !S.reveal));
   $('lFing').classList.toggle('hidden', !wantF);
   // chord display (band) or a row of chords (listening / recognition)
   const cb = $('lChord'), hideAll = S.hideNotes;
@@ -1166,7 +1400,20 @@ function render() {
   }
   if (cb.dataset.k !== ch) { cb.dataset.k = ch; cb.innerHTML = ch; }
   cb.classList.toggle('hidden', !ch);
-  $('lStage').classList.toggle('compact', !!(wantF || u.rhythm || (ch && degs.length)));
+  // the interactive landscape: 1 2 3 4 5 6 7 1, lit in sync with the tone
+  const ld = $('lLand'), lu = u.land && !S.hideNotes ? u.land : null;
+  let lh = '';
+  if (lu) {
+    const nmOf = c => u.inst ? noteName(c, u.inst) : P.instrument === 'both' ? `${noteName(c, 'guitar')}/${noteName(c, 'sax')}` : noteName(c, P.instrument);
+    lh = landCells().map((c, k) => {
+      const rev = lu.revealed.includes(k), num = lu.lvl !== 'hidden' || rev, nmOK = lu.lvl === 'full' || rev;
+      return `<div class="lc${k === 0 || k === 7 ? ' home' : ''}${lu.pool.includes(k) ? '' : ' off'}${lu.li === k ? ' lit' : ''}${rev ? ' rev' : ''}"><b>${num ? (k === 7 ? '1' : degText(c)) : '·'}</b><small>${nmOK ? esc(nmOf(c)) : '&nbsp;'}</small></div>`;
+    }).join('');
+  }
+  if (ld.dataset.k !== lh) { ld.dataset.k = lh; ld.innerHTML = lh; }
+  ld.classList.toggle('hidden', !lh);
+  seq.classList.toggle('hidden', !!lh && !u.showSeq && !u.revealed);
+  $('lStage').classList.toggle('compact', !!(wantF || u.rhythm || (ch && degs.length) || (lh && degs.length)));
   if (wantF) {
     const lines = u.inst ? [fingering(fd, u.inst)] : P.instrument === 'both' ? [fingering(fd, 'guitar'), fingering(fd, 'sax')] : [fingering(fd, P.instrument)];
     const fk = lines.join('|'); if ($('lFing').dataset.k !== fk) { $('lFing').dataset.k = fk; $('lFing').innerHTML = lines.map(esc).join('<br>'); }
@@ -1190,17 +1437,19 @@ function render() {
   const ck = u.ctx ? JSON.stringify(u.ctx) : '';
   if (ck !== L.ctxKey) {
     L.ctxKey = ck;
+    const prevA = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.a : null;
     const row = $('ctxRow');
     row.innerHTML = (u.ctx || []).map(([id, label]) => `<button data-a="${id}">${esc(label)}</button>`).join('');
     row.style.gridTemplateColumns = `repeat(${Math.min(3, Math.max(1, (u.ctx || []).length))}, 1fr)`;
     row.classList.toggle('hidden', !u.ctx); $('toolRow').classList.toggle('hidden', !!u.ctx);
     row.querySelectorAll('button').forEach(b => b.onclick = () => doAction(b.dataset.a));
-    if (u.ctx) row.querySelector('button').focus();
+    const keep = prevA && row.querySelector(`[data-a="${prevA}"]`);             // toggles (Heard it / Found it) keep focus
+    if (u.ctx) (keep || row.querySelector('button')).focus();
     else if (!document.activeElement || document.activeElement === document.body || document.activeElement.offsetParent === null) $('bNext').focus();
   }
   $('bPause').textContent = S.paused ? '▶ Resume' : '⏸ Pause';
   $('bFing').classList.toggle('sel', S.showFing);
-  const canShow = (u.hidden || (u.mask && u.mask.some(Boolean))) && !S.hideNotes;          // notes hidden by the exercise: this button reveals them on request
+  const canShow = (u.hidden || (u.mask && u.mask.some(Boolean))) && !S.hideNotes && !u.lock;          // notes hidden by the exercise: this button reveals them on request
   $('bHide').textContent = canShow ? (S.reveal ? '🙈 Hide' : '👁 Show') : (S.hideNotes ? '👁 Show' : '🙈 Hide');
   $('bHide').classList.toggle('sel', S.hideNotes || S.reveal);
   const rp = $('lReport'); rp.classList.toggle('hidden', !u.report); if (u.report && rp.dataset.k !== u.report) { rp.dataset.k = u.report; rp.innerHTML = u.report; }
@@ -1217,6 +1466,7 @@ setInterval(() => {
    Home, lessons list, settings
    ====================================================================== */
 function renderHome() {
+  if ($('lpStart')) $('lpStart').textContent = `▶ Start Stage ${LP().stage}`;
   const l = lessonById(P.current);
   $('hWeek').textContent = `WEEK ${l.week} · DAY ${l.day}${P.done[l.lesson_id] ? ' · practised ' + P.done[l.lesson_id] + '×' : ''}`;
   $('hTitle').textContent = l.title; $('hObj').textContent = l.objective;
@@ -1235,6 +1485,7 @@ function renderLessons() {
   const ear = Object.keys(P.ear).sort((a, b) => degSemis(a) - degSemis(b)).map(d => { const [ok, n] = P.ear[d]; return `${degText(d)}: <b>${Math.round(100 * ok / n)}%</b>`; }).join(' · ');
   $('lStats').innerHTML = `This week: <b>${recent.length}</b> sessions · <b>${recent.reduce((a, h) => a + h.minutes, 0)}</b> min`
     + (ear ? `<br>Notes by ear: ${ear}` : '')
+    + (Object.keys(P.find).length ? `<br>Found on instrument: ${Object.keys(P.find).sort((a, b) => degSemis(a) - degSemis(b)).map(d => { const [ok, n] = P.find[d]; return `${degText(d)}: <b>${Math.round(100 * ok / n)}%</b>`; }).join(' · ')}` : '')
     + (Object.keys(P.chords).length ? `<br>Chords by ear: ${Object.keys(P.chords).map(k => { const [ok, n] = P.chords[k]; return `${esc(k)} <b>${Math.round(100 * ok / n)}%</b>`; }).join(' · ')}` : '');
   $('bSound').textContent = `🔉 ${P.soundHigh ? 'High' : 'Low'}`;
   $('bCues').textContent = `🗣 Cues ${P.cues ? 'on' : 'off'}`;
@@ -1253,6 +1504,7 @@ window.addEventListener('popstate', e => {
   const s = (e.state && e.state.screen) || 'home';
   if (s === 'lesson' && L) { show('lesson', 'bNext'); render(); return; }
   if (s === 'guide') { renderGuide(); show('guide', 'gNext'); return; }
+  if (s === 'lp') { renderLP(); show('lp', 'lpStart'); return; }
   if (L && !S.paused) togglePause(true);           // Back out of a lesson = pause it; Resume from home
   renderHome(); show('home', 'bStart');
 });
@@ -1269,6 +1521,15 @@ $('bTest').onclick = () => {
 };
 $('bStart').onclick = () => { if (L) { go('lesson', 'bNext'); if (S.paused) togglePause(false); render(); } else startLesson(P.current); };
 $('bGuide').onclick = () => openGuide();
+$('bLand').onclick = () => openLP();
+const cyc = (list, v) => list[(list.indexOf(v) + 1) % list.length];
+$('lpDisplay').onclick = () => { setPref('display', cyc(['full', 'numbers', 'hidden'], pref('display'))); renderLP(); };
+$('lpHome').onclick = () => { setPref('homeRef', cyc(['every', 'exercise', 'request'], pref('homeRef'))); renderLP(); };
+$('lpWait').onclick = () => { setPref('wait', cyc(WAITS, pref('wait'))); renderLP(); };
+$('lpDrone').onclick = () => { setPref('drone', !pref('drone')); renderLP(); };
+$('lpInst').onclick = () => { P.instrument = cyc(['guitar', 'sax', 'both'], P.instrument); saveP(); renderLP(); };
+$('lpMin').onclick = () => { P.minutes = cyc([10, 20, 30, 45, 60], P.minutes); saveP(); renderLP(); };
+$('lpStart').onclick = () => startLesson('LP' + LP().stage, true);
 $('gPrev').onclick = () => flipGuide(-1);
 $('gNext').onclick = () => flipGuide(1);
 $('gClose').onclick = () => history.back();
@@ -1286,11 +1547,11 @@ $('bRepeat').onclick = () => doAction('repeat');
 $('bNext').onclick = () => { if (L && !S.paused) nextEx(); };
 $('bRef').onclick = () => {
   if (!L || S.paused) return; const u = L.r.ui || {}, degs = u.degs || [1];
-  if (u.hidden || S.hideNotes) pluck(degMidi(1), now() + 0.05, 1.2, 0.45);         // ear training: only give home
+  if (u.hidden || u.lock || S.hideNotes || (u.mask && u.mask.some(Boolean))) { pluck(degMidi(1), now() + 0.05, 1.2, 0.45); if (L.r.lights) L.r.lights.push({ t: now() + 0.05, e: now() + 1, d: 1, tag: 'home' }); }   // ear training: only give home
   else pluck(degMidi(degs[Math.max(0, u.active || 0)] || 1), now() + 0.05, 1.2, 0.5);
 };
 $('bFing').onclick = () => { S.showFing = !S.showFing; render(); };
-$('bHide').onclick = () => { const u = L && L.r && L.r.ui; if (u && (u.hidden || (u.mask && u.mask.some(Boolean))) && !S.hideNotes) S.reveal = !S.reveal; else S.hideNotes = !S.hideNotes; render(); };
+$('bHide').onclick = () => { const u = L && L.r && L.r.ui; if (u && (u.hidden || (u.mask && u.mask.some(Boolean))) && !S.hideNotes && !u.lock) S.reveal = !S.reveal; else S.hideNotes = !S.hideNotes; render(); };
 
 /* ======================================================================
    📖 Quick reference guide — nine cards, built from the same theory engine as the lessons
@@ -1441,6 +1702,20 @@ async function keepAwake(on) { try { if (on && !lock && navigator.wakeLock) lock
       execute: async ({ note }) => { P.reflections.push({ date: todayISO(), id: L ? L.lesson.lesson_id : P.current, note: String(note).slice(0, 500) }); saveP(); return reply('Saved your note.'); } },
     { name: 'show_guide', description: 'Musical Intuition: open the quick reference guide. Optional topic: landscape (C major notes), gravity (resolutions), chords (seven chords), harmony (I–IV–V–I, I–V–vi–IV), minor, blues, twelve_bar, jazz (ii–V–I), practice.', inputSchema: { type: 'object', properties: { topic: { type: 'string', enum: GUIDE_TOPICS } } },
       execute: async ({ topic } = {}) => { const i = GUIDE_TOPICS.indexOf(topic); openGuide(i >= 0 ? i : null); const g = buildGuide()[guideAt]; return reply(`${g.title}. ${g.tip}`); } },
+    { name: 'open_landscape_practice', description: 'Musical Intuition: open Landscape Practice, optionally starting a stage (1–5).', inputSchema: { type: 'object', properties: { stage: { type: 'number' } } },
+      execute: async ({ stage } = {}) => { if (stage && stage <= LP().unlocked) { LP().stage = stage; saveP(); startLesson('LP' + stage); return reply(`Stage ${stage}.`); } openLP(); return reply(`Landscape Practice. Stage ${LP().stage} is next; stages 1 to ${LP().unlocked} are open.`); } },
+    { name: 'set_display_level', description: 'Musical Intuition: display level — full (numbers and note names), numbers (numbers only) or hidden (audio only until the reveal).', inputSchema: { type: 'object', properties: { level: { type: 'string', enum: ['full', 'numbers', 'hidden'] } }, required: ['level'] },
+      execute: async ({ level }) => { setPref('display', level); if ($('lp').classList.contains('active')) renderLP(); render(); return reply(`Display: ${DISPLAY_LABEL[level]}.`); } },
+    { name: 'set_home_reference', description: 'Musical Intuition: when to hear home — every (before every attempt), exercise (once per exercise) or request (only when I ask).', inputSchema: { type: 'object', properties: { mode: { type: 'string', enum: ['every', 'exercise', 'request'] } }, required: ['mode'] },
+      execute: async ({ mode }) => { setPref('homeRef', mode); if ($('lp').classList.contains('active')) renderLP(); return reply(`Home: ${HOME_LABEL[mode]}.`); } },
+    { name: 'set_response_window', description: 'Musical Intuition: seconds to respond before the answer is revealed: 6, 8, 12, 20, or manual.', inputSchema: { type: 'object', properties: { seconds: { type: 'string', enum: ['6', '8', '12', '20', 'manual'] } }, required: ['seconds'] },
+      execute: async ({ seconds }) => { setPref('wait', seconds === 'manual' ? 'manual' : +seconds); if ($('lp').classList.contains('active')) renderLP(); return reply(`Response window: ${waitLabel(pref('wait'))}.`); } },
+    { name: 'set_drone', description: 'Musical Intuition: turn the quiet home drone on or off.', inputSchema: { type: 'object', properties: { on: { type: 'boolean' } }, required: ['on'] },
+      execute: async ({ on }) => { setPref('drone', !!on); if (!on) droneOff(); if ($('lp').classList.contains('active')) renderLP(); return reply(`Drone ${on ? 'on' : 'off'}.`); } },
+    { name: 'hear_again', description: 'Musical Intuition: hear the note or phrase again (restarts the response timer).', inputSchema: none, execute: async () => { doAction('hear'); return reply('Again.'); } },
+    { name: 'play_home', description: 'Musical Intuition: play home (the tonic).', inputSchema: none, execute: async () => { if (inLesson()) doAction('home'); else { audio(); pluck(degMidi(1), now() + 0.05, 1.2, 0.5); } return reply('Home.'); } },
+    { name: 'reveal_answer', description: 'Musical Intuition: reveal the answer (only in Manual reveal mode, after you have responded).', inputSchema: none,
+      execute: async () => { if (pref('wait') !== 'manual') return reply('The answer reveals itself when the timer ends.'); doAction('reveal'); return reply('Revealed.'); } },
     { name: 'record_my_playing', description: 'Musical Intuition: record my playing.', inputSchema: none,
       execute: async () => reply("Glasses web apps can't use the microphone yet, so I can't record. Your phone's voice recorder works for now.") },
   ];
