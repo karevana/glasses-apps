@@ -32,6 +32,7 @@
   .hidden { display: none !important; }
   .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(var(--u) * 1.6); }
   .row2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: calc(var(--u) * 1.6); }
+  .row3w { display: grid; grid-template-columns: 1.7fr 1fr 1fr; gap: calc(var(--u) * 1.6); }
   .brand { font-size: calc(var(--u) * 6); font-weight: 800; margin: 0; }
   .brand span { color: var(--accent); }
   .motto { color: var(--dim); font-size: calc(var(--u) * 3.4); }
@@ -97,6 +98,25 @@
   .beats i.on { background: var(--focus); }
   #ctxRow button { background: #0d1d2b; border-color: var(--listen); }
 
+  /* quick reference guide */
+  #guide { gap: calc(var(--u) * 1.4); }
+  #gBody { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 1.4); }
+  .gtop { color: var(--accent); font-size: calc(var(--u) * 3.2); font-weight: 800; letter-spacing: .06em; }
+  .gtitle { font-size: calc(var(--u) * 6.2); font-weight: 900; line-height: 1.1; }
+  .gsub { color: var(--dim); font-size: calc(var(--u) * 3.6); }
+  .gtab { display: grid; gap: calc(var(--u) * .9); margin-top: calc(var(--u) * 1); }
+  .gtab .gl { font-size: calc(var(--u) * 3.4); font-weight: 800; color: var(--dim); display: flex; align-items: center; line-height: 1.1; }
+  .gtab .gc { background: #121a18; border-radius: calc(var(--u) * 1.4); display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: calc(var(--u) * 1.4) calc(var(--u) * .4); font-weight: 700; line-height: 1.1; }
+  .gtab.gwide .gc { font-size: calc(var(--u) * 4.3); } .gtab.gmid .gc { font-size: calc(var(--u) * 4.8); } .gtab.gfew .gc { font-size: calc(var(--u) * 5); }
+  .gtab .gc.hd { background: #1b1b1b; color: #fff; font-weight: 900; }
+  .gtab .gc.home { background: #0f4a3d; color: var(--accent); }
+  .gtab .gc.blue { color: var(--listen); }
+  .gtab .gc.sm { font-size: calc(var(--u) * 3.5) !important; }
+  .gtab .gc.dm { color: #cfd6da; background: #0d0d0d; }
+  .gtab .gc small { font-size: .62em; color: var(--dim); margin-top: calc(var(--u) * .5); }
+  .gtip { margin-top: auto; border-left: calc(var(--u) * .9) solid #f2c76b; padding: calc(var(--u) * 1.2) calc(var(--u) * 2); color: #f7e2b4;
+    font-size: calc(var(--u) * 3.7); line-height: 1.3; background: #1a1408; border-radius: 0 calc(var(--u) * 1.4) calc(var(--u) * 1.4) 0; }
   /* lessons list */
   .scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: calc(var(--u) * 1.6); }
   .scroll::-webkit-scrollbar { display: none; }
@@ -127,7 +147,7 @@
     <button id="bMinutes">⏱ 30 min</button><button id="bKey">Key C</button><button id="bTest">🔊 Test</button>
   </div>
   <div class="spacer"></div>
-  <div class="row2"><button id="bStart" class="go">▶ Start today's lesson</button><button id="bLessons">Lessons</button></div>
+  <div class="row3w"><button id="bStart" class="go">▶ Start lesson</button><button id="bLessons">Lessons</button><button id="bGuide">📖 Guide</button></div>
 </section>
 
 <!-- LESSON -->
@@ -154,6 +174,12 @@
   <div class="scroll" id="lList"></div>
   <div class="stats" id="lStats"></div>
   <div class="row3"><button id="bSound">🔉 Low</button><button id="bCues">🗣 Cues off</button><button id="bWipe">🗑 Reset</button></div>
+</section>
+
+<!-- QUICK REFERENCE GUIDE -->
+<section id="guide" class="screen">
+  <div id="gBody"></div>
+  <div class="row3"><button id="gPrev">◀ Prev</button><button id="gClose">Close</button><button id="gNext" class="go">Next ▶</button></div>
 </section>
 
 <!-- DONE -->
@@ -242,10 +268,10 @@ function semisToDeg(s) { s = ((s % 12) + 12) % 12; const i = MAJOR.indexOf(s); i
 const QUAL = { maj: [[0, 4, 7], '', 'major'], min: [[0, 3, 7], 'm', 'minor'], dim: [[0, 3, 6], '°', 'diminished'],
   dom7: [[0, 4, 7, 10], '7', 'dominant 7th'], min7: [[0, 3, 7, 10], 'm7', 'minor 7th'], maj7: [[0, 4, 7, 11], 'maj7', 'major 7th'], m7b5: [[0, 3, 6, 10], 'm7♭5', 'half-diminished'] };
 const NUMS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
-function parseChord(sym) {
+function parseChord(sym, minor = isMinorish()) {
   const m = String(sym).match(/^([b#♭♯]?)(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)(°|ø)?(maj7|7)?$/);
   if (!m) return parseChord('I');
-  const idx = NUMS.indexOf(m[2].toUpperCase()), upper = m[2] === m[2].toUpperCase(), scale = isMinorish() ? NAT_MINOR : MAJOR;
+  const idx = NUMS.indexOf(m[2].toUpperCase()), upper = m[2] === m[2].toUpperCase(), scale = minor ? NAT_MINOR : MAJOR;
   const acc = /b|♭/.test(m[1]) ? -1 : /#|♯/.test(m[1]) ? 1 : 0;
   let q = upper ? 'maj' : 'min';
   if (m[3] === '°') q = 'dim'; if (m[3] === 'ø') q = 'm7b5';
@@ -960,7 +986,7 @@ function renderHome() {
   ['guitar', 'sax', 'both'].forEach(i => $('i' + i[0].toUpperCase() + i.slice(1)).classList.toggle('sel', P.instrument === i));
   $('bMinutes').textContent = `⏱ ${P.minutes} min`;
   $('bKey').textContent = `Key ${keyLabel()}`;
-  $('bStart').textContent = L ? `▶ Resume Day ${L.lesson.day}` : "▶ Start today's lesson";
+  $('bStart').textContent = L ? `▶ Resume Day ${L.lesson.day}` : '▶ Start lesson';
 }
 function renderLessons() {
   let wkNo = 0;
@@ -988,6 +1014,7 @@ function go(id, focusId) { history.pushState({ screen: id, depth: ((history.stat
 window.addEventListener('popstate', e => {
   const s = (e.state && e.state.screen) || 'home';
   if (s === 'lesson' && L) { show('lesson', 'bNext'); render(); return; }
+  if (s === 'guide') { renderGuide(); show('guide', 'gNext'); return; }
   if (L && !S.paused) togglePause(true);           // Back out of a lesson = pause it; Resume from home
   renderHome(); show('home', 'bStart');
 });
@@ -1003,6 +1030,10 @@ $('bTest').onclick = () => {
   setTimeout(() => { if (!L) droneOff(); }, 4000);
 };
 $('bStart').onclick = () => { if (L) { go('lesson', 'bNext'); if (S.paused) togglePause(false); render(); } else startLesson(P.current); };
+$('bGuide').onclick = () => openGuide();
+$('gPrev').onclick = () => flipGuide(-1);
+$('gNext').onclick = () => flipGuide(1);
+$('gClose').onclick = () => history.back();
 $('bLessons').onclick = () => { renderLessons(); go('lessons', 'lList'); setTimeout(() => { const b = $('lList').querySelector('button.sel') || $('lList').querySelector('button'); if (b) b.focus(); }, 0); };
 $('bSound').onclick = () => { P.soundHigh = !P.soundHigh; saveP(); renderLessons(); };
 $('bCues').onclick = () => { P.cues = !P.cues; saveP(); renderLessons(); };
@@ -1023,8 +1054,86 @@ $('bRef').onclick = () => {
 $('bFing').onclick = () => { S.showFing = !S.showFing; render(); };
 $('bHide').onclick = () => { S.hideNotes = !S.hideNotes; render(); };
 
+/* ======================================================================
+   📖 Quick reference guide — nine cards, built from the same theory engine as the lessons
+   (so names always match the app). Fixed keys as in the course: C major, A minor, A blues.
+   Left/right flips cards; it opens on the card for the current week.
+   ====================================================================== */
+const gChord = (key, sym, minor) => { const c = parseChord(sym, minor); return spellAt(key, c.idx, c.root) + QUAL[c.q][1]; };
+const gDegs = (sym, minor) => { const c = parseChord(sym, minor); return QUAL[c.q][0].map(iv => semisToDeg(c.root + iv)); };
+const gTones = (key, sym, minor) => gDegs(sym, minor).map(d => spell(key, d)).join(' ');
+function buildGuide() {
+  const C = 'C', Cs = SAX_KEY.C, A = 'A', As = SAX_KEY.A, scale8 = [1, 2, 3, 4, 5, 6, 7, 8], minor8 = [1, 2, 'b3', 4, 5, 'b6', 'b7', 8];
+  const SEVEN = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'], P1 = ['I', 'IV', 'V', 'I'], P2 = ['I', 'V', 'vi', 'IV'];
+  const pairs = [[2, 1], [4, 3], [6, 5], [7, 8]], TW = ['I7', 'I7', 'I7', 'I7', 'IV7', 'IV7', 'I7', 'I7', 'V7', 'IV7', 'I7', 'V7'];
+  const cell = (t, o) => Object.assign({ t }, o || {});
+  return [
+    { title: 'Your first musical landscape', sub: 'Concert C major · written tenor sax D major',
+      head: scale8.map(d => cell(degText(d), { home: d % 7 === 1 })),
+      rows: [['Guitar', scale8.map(d => cell(spell(C, d)))], ['Sax', scale8.map(d => cell(spell(Cs, d)))]],
+      tip: 'Sing the numbers first. Both instruments share the same musical relationships, even when their note names differ.' },
+    { title: 'Musical gravity', sub: 'Common resolutions in a major key',
+      head: pairs.map(([a, b]) => cell(`${degText(a)} → ${degText(b)}`)),
+      rows: [['Guitar', pairs.map(([a, b]) => cell(`${spell(C, a)} → ${spell(C, b)}`))], ['Sax', pairs.map(([a, b]) => cell(`${spell(Cs, a)} → ${spell(Cs, b)}`))]],
+      tip: 'Play each pair over a concert C drone. Notice how the tension changes. Common resolutions, not rules.' },
+    { title: 'The seven chords', sub: 'Concert C major · written tenor sax D major',
+      head: SEVEN.map(s => cell(romanLabel(s), { home: s === 'I' })),
+      rows: [['Guitar', SEVEN.map(s => cell(gChord(C, s, false)))], ['Sax', SEVEN.map(s => cell(gChord(Cs, s, false)))],
+        ['Degrees', SEVEN.map(s => cell(gDegs(s, false).map(degText).join(' '), { small: true }))]],
+      tip: 'Play each chord on guitar, sing its three notes, then play the same chord tones on sax.' },
+    { title: 'Follow the harmony', sub: 'Four beats per chord · repeat each progression',
+      head: ['1st', '2nd', '3rd', '4th'].map(t => cell(t)),
+      rows: [['I–IV–V–I', P1.map(s => cell(gChord(C, s, false)))], ['Sax', P1.map(s => cell(gChord(Cs, s, false), { dim: true }))],
+        ['I–V–vi–IV', P2.map(s => cell(gChord(C, s, false)))], ['Sax', P2.map(s => cell(gChord(Cs, s, false), { dim: true }))]],
+      tip: 'Start with chord roots. Then aim for 3rds or 5ths when the chord changes. Sax plays single notes, not chords.' },
+    { title: 'The minor landscape', sub: 'Concert A natural minor · written sax B minor',
+      head: minor8.map(d => cell(degText(d), { home: d === 1 || d === 8 })),
+      rows: [['Guitar', minor8.map(d => cell(spell(A, d)))], ['Sax', minor8.map(d => cell(spell(As, d)))]],
+      tip: 'A minor uses the same concert notes as C major — but with a different home. Sing and resolve to the new tonic.' },
+    { title: 'The blues palette', sub: 'Concert A blues · written sax B blues',
+      head: [1, 'b3', 4, 'b5', 5, 'b7'].map(d => cell(degText(d), { home: d === 1, blue: d === 'b5' })),
+      rows: [['Guitar', [1, 'b3', 4, 'b5', 5, 'b7'].map(d => cell(spell(A, d)))], ['Sax', [1, 'b3', 4, 'b5', 5, 'b7'].map(d => cell(spell(As, d)))]],
+      tip: 'Leave out ♭5 for the minor pentatonic. Add it back as a passing note. Short, expressive phrases.' },
+    { title: 'Twelve-bar blues', sub: 'Concert A · one cell = one 4-beat bar · sax underneath',
+      head: ['Bar 1', 'Bar 2', 'Bar 3', 'Bar 4'].map(t => cell(t)),
+      rows: [0, 1, 2].map(r => [`Bars ${r * 4 + 1}–${r * 4 + 4}`, TW.slice(r * 4, r * 4 + 4).map(s => cell(gChord(A, s, true), { sub: gChord(As, s, true) }))]),
+      tip: `Written sax: ${gChord(A, 'I7', true)} → ${gChord(As, 'I7', true)}, ${gChord(A, 'IV7', true)} → ${gChord(As, 'IV7', true)}, ${gChord(A, 'V7', true)} → ${gChord(As, 'V7', true)}. Repeat the 12 bars.` },
+    { title: 'Your first jazz progression', sub: 'ii–V–I in concert C major',
+      head: ['ii7', 'V7', 'Imaj7'].map(s => cell(s)),
+      rows: [['Guitar', ['ii7', 'V7', 'Imaj7'].map(s => cell(gChord(C, s, false)))], ['Sax', ['ii7', 'V7', 'Imaj7'].map(s => cell(gChord(Cs, s, false)))],
+        ['Gtr tones', ['ii7', 'V7', 'Imaj7'].map(s => cell(gTones(C, s, false), { small: true }))], ['Sax tones', ['ii7', 'V7', 'Imaj7'].map(s => cell(gTones(Cs, s, false), { small: true, dim: true }))]],
+      tip: `Guide-tone line: ${spell(C, 4)} → ${spell(C, 4)} → ${spell(C, 3)} on guitar, ${spell(Cs, 4)} → ${spell(Cs, 4)} → ${spell(Cs, 3)} on sax. Listen to the resolution.` },
+    { title: 'Your daily practice', sub: '30 minutes · five days a week',
+      head: ['Listen', 'Sing', 'Play', 'Create'].map(t => cell(t)),
+      rows: [['Minutes', ['4', '5', '8', '8'].map(t => cell(t))], ['Focus', ['Tonal center', 'Imitate', 'Find notes', 'Improvise'].map(t => cell(t, { small: true }))]],
+      tip: 'Plus 3 minutes of warm-up and 2 of reflection. Track progress without judging creativity by accuracy alone.' },
+  ];
+}
+const GUIDE_FOR_WEEK = { 1: 0, 2: 1, 3: 0, 4: 8, 5: 2, 6: 3, 7: 4, 8: 5, 9: 0, 10: 7, 11: 8, 12: 8 };
+const GUIDE_TOPICS = ['landscape', 'gravity', 'chords', 'harmony', 'minor', 'blues', 'twelve_bar', 'jazz', 'practice'];
+let guideAt = 0;
+function renderGuide() {
+  const cards = buildGuide(), g = cards[guideAt], n = g.head.length;
+  const cls = c => ['gc', c.home ? 'home' : '', c.blue ? 'blue' : '', c.small ? 'sm' : '', c.dim ? 'dm' : ''].join(' ');
+  const cellHtml = c => `<div class="${cls(c)}">${esc(c.t)}${c.sub ? `<small>${esc(c.sub)}</small>` : ''}</div>`;
+  $('gBody').innerHTML = `<div class="gtop">MUSICAL INTUITION · ${guideAt + 1}/${cards.length}</div>
+    <div class="gtitle">${esc(g.title)}</div><div class="gsub">${esc(g.sub)}</div>
+    <div class="gtab g${n > 6 ? 'wide' : n > 4 ? 'mid' : 'few'}" style="grid-template-columns: 19% repeat(${n}, 1fr)">
+      <div></div>${g.head.map(c => `<div class="${cls(c)} hd">${esc(c.t)}</div>`).join('')}
+      ${g.rows.map(([label, cells]) => `<div class="gl">${esc(label)}</div>${cells.map(cellHtml).join('')}`).join('')}
+    </div>
+    <div class="gtip">${esc(g.tip)}</div>`;
+}
+function openGuide(i) {
+  if (L && !S.paused) togglePause(true);           // reading the guide mid-lesson pauses it; Back returns, then Resume
+  guideAt = i != null ? i : (GUIDE_FOR_WEEK[curLesson().week] || 0);
+  renderGuide(); go('guide', 'gNext');
+}
+const flipGuide = d => { guideAt = (guideAt + d + 9) % 9; renderGuide(); };
+
 /* arrow keys: nearest button in that direction (same as the other glasses apps) */
 document.addEventListener('keydown', e => {
+  if (screen === 'guide' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); flipGuide(e.key === 'ArrowRight' ? 1 : -1); return; }   // swipe = flip card
   const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
   if (!dir) return;
   const scr = document.querySelector('.screen.active');
@@ -1091,6 +1200,8 @@ async function keepAwake(on) { try { if (on && !lock && navigator.wakeLock) lock
     { name: 'lesson_status', description: 'Musical Intuition: say where I am in the lesson and what to do.', inputSchema: none, execute: async () => reply(status()) },
     { name: 'save_reflection', description: 'Musical Intuition: save a spoken note about how practice went.', inputSchema: { type: 'object', properties: { note: { type: 'string' } }, required: ['note'] },
       execute: async ({ note }) => { P.reflections.push({ date: todayISO(), id: L ? L.lesson.lesson_id : P.current, note: String(note).slice(0, 500) }); saveP(); return reply('Saved your note.'); } },
+    { name: 'show_guide', description: 'Musical Intuition: open the quick reference guide. Optional topic: landscape (C major notes), gravity (resolutions), chords (seven chords), harmony (I–IV–V–I, I–V–vi–IV), minor, blues, twelve_bar, jazz (ii–V–I), practice.', inputSchema: { type: 'object', properties: { topic: { type: 'string', enum: GUIDE_TOPICS } } },
+      execute: async ({ topic } = {}) => { const i = GUIDE_TOPICS.indexOf(topic); openGuide(i >= 0 ? i : null); const g = buildGuide()[guideAt]; return reply(`${g.title}. ${g.tip}`); } },
     { name: 'record_my_playing', description: 'Musical Intuition: record my playing.', inputSchema: none,
       execute: async () => reply("Glasses web apps can't use the microphone yet, so I can't record. Your phone's voice recorder works for now.") },
   ];
