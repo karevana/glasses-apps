@@ -1255,3 +1255,570 @@ window.LESSONS.push(
     ],
   },
 );
+
+/* ---------------- Weeks 9–12: musical freedom ----------------
+   TUNES: public-domain melodies as scale degrees (key-free, so they play in any key and transpose for sax).
+     Each phrase is 4 bars of 4/4: degs, durs (beats), start (pickup rest), chords ('I' = one bar, ['V','I'] = half each).
+     Degree -2 = 5 below home, -1 = 6 below home; 'r' = rest.
+   range: 'mid' puts home at F3–E4 so the low notes of these tunes stay on the tenor sax.
+   tune exercise: order 'phrase' | 'whole' | 'listen' | 'play' (band only), reveal 'hide' (👁 Show on request), repeat, style, tempo.
+   key on an exercise moves it to another key (Day 44). Week 12 lessons use concert_key/scale 'song' = the song you build. */
+
+window.TUNES = {
+  ode: { title: 'Ode to Joy', style: 'ballad', phrases: [
+    { degs: [3, 3, 4, 5, 5, 4, 3, 2, 1, 1, 2, 3, 3, 2, 2], durs: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5, 0.5, 2], chords: ['I', 'V', 'I', 'V'] },
+    { degs: [3, 3, 4, 5, 5, 4, 3, 2, 1, 1, 2, 3, 2, 1, 1], durs: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5, 0.5, 2], chords: ['I', 'V', 'I', ['V', 'I']] },
+    { degs: [2, 2, 3, 1, 2, 3, 4, 3, 1, 2, 3, 4, 3, 2, 1, 2, -2], durs: [1, 1, 1, 1, 1, 0.5, 0.5, 1, 1, 1, 0.5, 0.5, 1, 1, 1, 1, 2], chords: ['V', ['V', 'I'], 'V', ['I', 'V']] },
+    { degs: [3, 3, 4, 5, 5, 4, 3, 2, 1, 1, 2, 3, 2, 1, 1], durs: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5, 0.5, 2], chords: ['I', 'V', 'I', ['V', 'I']] },
+  ] },
+  saints: { title: 'When the Saints Go Marching In', style: 'pop', phrases: [
+    { start: 1, degs: [1, 3, 4, 5, 'r', 1, 3, 4, 5], durs: [1, 1, 1, 4, 1, 1, 1, 1, 4], chords: ['I', 'I', 'I', 'I'] },
+    { start: 1, degs: [1, 3, 4, 5, 3, 1, 3, 2], durs: [1, 1, 1, 2, 2, 2, 2, 4], chords: ['I', 'I', 'I', 'V'] },
+    { start: 1, degs: [3, 3, 2, 1, 1, 3, 5, 5, 4], durs: [1, 1, 1, 3, 1, 2, 2, 1, 3], chords: ['I', 'I7', 'I', 'IV'] },
+    { start: 2, degs: [3, 4, 5, 3, 1, 2, 1], durs: [1, 1, 2, 2, 2, 2, 4], chords: ['I', 'I', 'V', 'I'] },
+  ] },
+  twinkle: { title: 'Twinkle, Twinkle, Little Star', style: 'pop', phrases: [
+    { degs: [1, 1, 5, 5, 6, 6, 5, 4, 4, 3, 3, 2, 2, 1], durs: [1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2], chords: ['I', ['IV', 'I'], ['IV', 'I'], ['V', 'I']] },
+    { degs: [5, 5, 4, 4, 3, 3, 2, 5, 5, 4, 4, 3, 3, 2], durs: [1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2], chords: [['I', 'IV'], ['I', 'V'], ['I', 'IV'], ['I', 'V']] },
+    { degs: [1, 1, 5, 5, 6, 6, 5, 4, 4, 3, 3, 2, 2, 1], durs: [1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2], chords: ['I', ['IV', 'I'], ['IV', 'I'], ['V', 'I']] },
+  ] },
+  // 3/4 time — used for learning by ear over the drone, not with the 4/4 band
+  grace: { title: 'Amazing Grace', phrases: [
+    { degs: [-2, 1, 3, 1, 3, 2, 1, -1, -2], durs: [1, 2, 0.5, 0.5, 2, 1, 2, 1, 2] },
+    { degs: [-2, 1, 3, 1, 3, 2, 5], durs: [1, 2, 0.5, 0.5, 2, 1, 3] },
+    { degs: [3, 5, 3, 5, 3, 1, -2, -1, 1], durs: [1, 2, 0.5, 0.5, 2, 1, 2, 1, 3] },
+    { degs: [-1, -2, -2, 1, 3, 1, 3, 2, 1], durs: [1, 2, 1, 2, 0.5, 0.5, 2, 1, 3] },
+  ] },
+};
+const T = window.TUNES;
+const frag = (tune, p, from, to) => { const x = T[tune].phrases[p]; return { degs: x.degs.slice(from, to), durs: x.durs.slice(from, to) }; };
+
+Object.assign(window.WEEKS, { 9: 'Learning songs by ear', 10: 'Introduction to jazz', 11: 'Developing my own musical voice', 12: 'Independent musical creativity' });
+const swingBand = prog => band(prog || ['ii7', 'V7', 'Imaj7', 'Imaj7'], 'swing');
+const IIVI = ['ii7', 'V7', 'Imaj7', 'Imaj7'];
+const EVAL = [
+  { phase: 'REFLECT', text: 'Hearing and reproducing notes: how sure did your ear feel?' },
+  { phase: 'REFLECT', text: 'Following harmony: did you feel the chords change?' },
+  { phase: 'REFLECT', text: 'Phrasing: did your ideas breathe?' },
+  { phase: 'REFLECT', text: 'Rhythm: did it groove?' },
+  { phase: 'REFLECT', text: 'Expression: where did it sound most like you?' },
+  { phase: 'REFLECT', text: 'Confidence: how did it feel to perform?' },
+  { phase: 'REFLECT', text: 'Moving ideas between guitar and sax: easier now?' },
+];
+
+window.LESSONS.push(
+  /* ===== WEEK 9: learning songs by ear ===== */
+  {
+    lesson_id: 'W09D41', week: 9, day: 41, title: 'Short melodic fragments',
+    objective: 'Two to four notes from real melodies — sing them, find them, maybe recognise the tune.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 80, allowed_scale_degrees: [-2, 1, 2, 3, 4, 5, 6], duration_minutes: 30,
+    exercises: [
+      warm('Play {n5} below home up to {n6}, slowly: the range of today\'s tunes.'),
+      { type: 'drone_listening', duration_seconds: 60, drone: true, prompt_seconds: 15, prompts: [
+        { phase: 'LISTEN', text: 'Today: real melodies, a few notes at a time.' },
+        { phase: 'LISTEN', text: '5 below home. Many tunes start here.', play: [-2, 1] },
+        { phase: 'SING', text: 'Sing low 5, then home.', degs: [-2, 1] },
+        { phase: 'IMAGINE', text: 'Hear a tune you love in your head. Where is home?' },
+      ] },
+      { type: 'listen_sing_play', hide_answer: true, response_seconds: 5, drone: true, check_text: 'Recognise the tune yet? Got it?',
+        phrases: [frag('twinkle', 0, 0, 4), frag('twinkle', 0, 4, 7), frag('twinkle', 0, 7, 11), frag('twinkle', 0, 11, 14),
+          frag('ode', 0, 0, 4), frag('ode', 0, 4, 8), frag('ode', 0, 8, 12), frag('ode', 0, 12, 15)], repetitions: 1 },
+      { type: 'listen_sing_play', hide_answer: true, response_seconds: 5, drone: true, check_text: 'Got it?',
+        phrases: [frag('grace', 0, 0, 2), frag('grace', 0, 2, 5), frag('grace', 0, 5, 7), frag('grace', 0, 7, 9), frag('saints', 0, 0, 4), frag('saints', 1, 4, 8)], repetitions: 1 },
+      { type: 'random_note_recognition', allowed_degrees: [-2, 1, 3, 5], trials: 10 },
+      improv([-2, 1, 2, 3, 4, 5, 6], [
+        'Make up tiny three-note fragments. Repeat each one.',
+        'A fragment that climbs, one that falls.',
+        'Start on low 5, end on home.',
+        'Join two fragments into a little tune.',
+        'Free.',
+      ], { duration_seconds: 300 }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W09D42', week: 9, day: 42, title: 'Longer melodic phrases',
+    objective: 'Five to eight notes: hold a whole phrase in your ear, and name where it starts and ends.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 80, allowed_scale_degrees: [-2, -1, 1, 2, 3, 4, 5, 6], duration_minutes: 30,
+    exercises: [
+      warm('Play {n6} below home up to {n6} above, slowly.'),
+      { type: 'listen_sing_play', hide_answer: true, response_seconds: 7, drone: true,
+        sing_text: 'Sing it back. Which number does it START on? Which does it END on?', check_text: 'Start and end — were you right?',
+        phrases: [frag('twinkle', 0, 0, 7), frag('twinkle', 0, 7, 14), frag('twinkle', 1, 0, 7)], repetitions: 2 },
+      { type: 'listen_sing_play', hide_answer: true, response_seconds: 9, drone: true,
+        sing_text: 'Sing it. Where does it start — below home? Where does it end?', check_text: 'Start and end — were you right?',
+        phrases: T.grace.phrases, repetitions: 2 },
+      { type: 'listen_sing_play', hide_answer: true, response_seconds: 8, drone: true,
+        sing_text: 'Sing it. First number? Last number?', check_text: 'Start and end — right?',
+        random: { degrees: [-2, -1, 1, 2, 3, 4, 5, 6], length: 6, count: 6, min_length: 5, max_length: 8, rhythmic: true, end_home: true, max_leap: 3 } },
+      improv([-2, -1, 1, 2, 3, 4, 5, 6], [
+        'Your own long phrases: five to eight notes, ending on home.',
+        'Start below home. Rise. Come home.',
+        'A phrase, a breath, the phrase again — changed.',
+        'Free.',
+      ], { duration_seconds: 300 }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W09D43', week: 9, day: 43, title: 'Recognizing familiar melodies',
+    objective: 'Learn Ode to Joy and When the Saints by ear — notes revealed only when you ask — then play them with the band.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 84, allowed_scale_degrees: [-2, 1, 2, 3, 4, 5], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {n2} {n3} {n4} {n5}, then down to {n5} below home.'),
+      { type: 'listen_sing_play', hide_answer: true, response_seconds: 8, drone: true, check_text: 'Got the phrase? (👁 Show reveals it)',
+        phrases: T.ode.phrases.slice(0, 3), repetitions: 2 },
+      { type: 'tune', tune: 'ode', order: 'phrase', reveal: 'hide', repeat: 2, chord_display: 'current' },
+      { type: 'tune', tune: 'ode', order: 'play', reveal: 'hide', repeat: 2, chord_display: 'current' },
+      { type: 'listen_sing_play', hide_answer: true, response_seconds: 8, drone: true, check_text: 'Got the phrase? (👁 Show reveals it)',
+        phrases: T.saints.phrases, repetitions: 1, tempo: 96 },
+      { type: 'tune', tune: 'saints', order: 'phrase', reveal: 'hide', tempo: 96, chord_display: 'current' },
+      { type: 'tune', tune: 'saints', order: 'play', reveal: 'hide', repeat: 2, tempo: 96, chord_display: 'current' },
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W09D44', week: 9, day: 44, title: 'Changing the key',
+    objective: 'Same tune, new home: play Ode to Joy in C, then G, then F. The numbers stay; the note names move.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 84, allowed_scale_degrees: [-2, 1, 2, 3, 4, 5], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} to {n5} in C. Next you will move it.'),
+      { type: 'tune', tune: 'ode', order: 'whole', chord_display: 'current' },
+      { type: 'drone_listening', key: 'G', duration_seconds: 60, drone: true, prompt_seconds: 15, prompts: [
+        { phase: 'LISTEN', text: 'New home: {n1}. Same numbers, new names.' },
+        { phase: 'LISTEN', text: '1 2 3 4 5 in the new key.', play: [1, 2, 3, 4, 5] },
+        { phase: 'PLAY', text: 'Find {n1} {n2} {n3} {n4} {n5}.', degs: [1, 2, 3, 4, 5] },
+        { phase: 'PLAY', text: 'And low 5: {n-2}.', degs: [-2] },
+      ] },
+      { type: 'tune', key: 'G', tune: 'ode', order: 'phrase', reveal: 'hide', chord_display: 'current' },
+      { type: 'tune', key: 'G', tune: 'ode', order: 'play', chord_display: 'current' },
+      { type: 'drone_listening', key: 'F', duration_seconds: 60, drone: true, prompt_seconds: 15, prompts: [
+        { phase: 'LISTEN', text: 'Now home is {n1}.' },
+        { phase: 'LISTEN', text: '1 2 3 4 5.', play: [1, 2, 3, 4, 5] },
+        { phase: 'PLAY', text: 'Find {n1} {n2} {n3} {n4} {n5}.', degs: [1, 2, 3, 4, 5] },
+        { phase: 'PLAY', text: 'Low 5: {n-2}. Watch for the ♭ on 4.', degs: [-2, 4] },
+      ] },
+      { type: 'tune', key: 'F', tune: 'ode', order: 'phrase', reveal: 'hide', chord_display: 'current' },
+      { type: 'tune', key: 'F', tune: 'ode', order: 'play', chord_display: 'current' },
+      { type: 'tune', key: 'G', tune: 'saints', order: 'play', reveal: 'hide', tempo: 96, chord_display: 'current' },
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W09D45', week: 9, day: 45, title: 'Making a melody my own',
+    objective: 'Take When the Saints and change its rhythm, articulation and phrasing — then improvise from it.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 100, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play the Saints melody once, slowly.'),
+      { type: 'tune', tune: 'saints', order: 'whole', style: 'swing', chord_display: 'current' },
+      { type: 'free_improvisation', backing: { tune: 'saints', style: 'swing' }, degrees: [1, 2, 3, 4, 5, 6, 7], chord_display: 'current', duration_bars: 96, prompts: [
+        { phase: 'LISTEN', text: 'The melody with the band. Play along quietly.', bars: 16, play: 'tune:saints' },
+        { phase: 'CREATE', text: 'Chorus 2: the melody, but change the rhythm.', bars: 16 },
+        { phase: 'CREATE', text: 'Chorus 3: add your own notes between the phrases.', bars: 16 },
+        { phase: 'CREATE', text: 'Chorus 4: change how it ends — every phrase.', bars: 16 },
+        { phase: 'CREATE', text: 'Chorus 5: short and punchy, then long and smooth.', bars: 16 },
+        { phase: 'CREATE', text: 'Chorus 6: your own version. The melody is just inspiration.', bars: 16 },
+      ] },
+      { type: 'free_improvisation', backing: { tune: 'saints', style: 'pop' }, degrees: [1, 2, 3, 4, 5, 6, 7], chord_display: 'current', duration_bars: 48, prompts: [
+        { phase: 'CREATE', text: 'Straight feel now. Your version of the Saints. Start your phone recorder if you like.', bars: 16 },
+        { phase: 'CREATE', text: 'Keep going — inspired by the melody, not stuck to it.', bars: 16 },
+        { phase: 'CREATE', text: 'Last chorus: bring back the real melody at the end.', bars: 16 },
+      ] },
+      REFLECTION,
+    ],
+  },
+
+  /* ===== WEEK 10: introduction to jazz (swing band) ===== */
+  {
+    lesson_id: 'W10D46', week: 10, day: 46, title: 'Seventh chords',
+    objective: 'Major 7th, minor 7th, dominant 7th — hear the colour each fourth note adds.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 72, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {n3} {n5} {n7} — a major 7th chord, one note at a time.'),
+      listen([
+        { phase: 'LISTEN', text: 'Major 7th: {cImaj7}. Dreamy.', chord: 'Imaj7', arp: true },
+        { phase: 'LISTEN', text: 'Minor 7th: {cii7}. Mellow.', chord: 'ii7', arp: true },
+        { phase: 'LISTEN', text: 'Dominant 7th: {cV7}. Bluesy — it wants to move.', chord: 'V7', arp: true },
+        { phase: 'LISTEN', text: 'Plain I, then Imaj7. Hear the 7th glow.', chords: ['I', 'Imaj7'] },
+        { phase: 'SING', text: 'Sing 1 3 5 7.', degs: [1, 3, 5, 7] },
+        { phase: 'SING', text: 'Sing 2 4 6 1.', degs: [2, 4, 6, 8] },
+      ], 200),
+      { type: 'listen_sing_play', phrases: [{ degs: [1, 3, 5, 7], chord: 'Imaj7' }, { degs: [2, 4, 6, 8], chord: 'ii7' }, { degs: [5, 7, 9, 11], chord: 'V7' }, { degs: [7, 5, 3, 1], chord: 'Imaj7' }],
+        repetitions: 2, response_seconds: 6 },
+      { type: 'chord_recognition', answer: 'quality', chords: ['Imaj7', 'IVmaj7', 'ii7', 'iii7', 'vi7', 'V7'], trials: 12 },
+      tones(band([{ sym: 'Imaj7', beats: 8 }, { sym: 'IVmaj7', beats: 8 }], 'ballad'), [
+        { text: 'The 7th of each chord: {n7}, then {n3}.', target: 'seventh' },
+        { text: 'Root, then 7th — hear the stretch.', target: 'tones' },
+        { text: 'Any chord tone. Land on 7ths often.', target: 'tones' },
+      ], { duration_seconds: 180 }),
+      bandImprov(band([{ sym: 'Imaj7', beats: 8 }, { sym: 'IVmaj7', beats: 8 }], 'ballad'), [
+        'Dreamy improvisation over Imaj7–IVmaj7. Let 7ths ring.',
+        'Long notes. Lots of space.',
+        'Free.',
+      ], { duration_seconds: 300, chord_tones: true }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W10D47', week: 10, day: 47, title: 'The ii–V–I progression',
+    objective: 'Dm7–G7–Cmaj7 with a swing band: roots, 3rds and 5ths first, then 7ths.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 84, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play the roots {n2} {n5} {n1}, slowly.'),
+      listen([
+        { phase: 'LISTEN', text: 'ii–V–I: the sound of jazz.', chords: ['ii7', 'V7', 'Imaj7'] },
+        { phase: 'SING', text: 'Sing the roots: 2, 5, 1.', chords: ['ii7', 'V7', 'Imaj7'], degs: [2, 5, 1] },
+        { phase: 'LISTEN', text: 'Again. Feel the arrival on I.', chords: ['ii7', 'V7', 'Imaj7'] },
+      ], 90),
+      tones(swingBand(IIVI), [
+        { text: 'Roots with the swing band: 2, 5, 1.', target: 'root', seconds: 70 },
+        { text: '3rds: {n4}, {n7}, {n3}.', target: 'third', seconds: 70 },
+        { text: '5ths.', target: 'fifth', seconds: 60 },
+        { text: 'Now 7ths: {n1}, {n4}, {n7}.', target: 'seventh', seconds: 70 },
+        { text: 'Any chord tone. Swing it.', target: 'tones', seconds: 70 },
+      ], { duration_seconds: 340 }),
+      { type: 'question_answer', backing: swingBand(IIVI), degrees: [1, 2, 3, 4, 5, 6, 7], swing: true, duration_seconds: 240, chord_display: 'current' },
+      bandImprov(swingBand(IIVI), [
+        'Free over ii–V–I. Land on chord tones.',
+        'Short phrases. Swing the eighths.',
+        'Free.',
+      ], { duration_seconds: 300, chord_tones: true, chord_display: 'current' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W10D48', week: 10, day: 48, title: 'Guide tones',
+    objective: '3rds and 7ths carry the harmony — move to the nearest one and hear how smooth it is.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 80, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n4} {n4} {n3}, then {n1} {n7} {n7}.'),
+      listen([
+        { phase: 'LISTEN', text: 'A guide-tone line: {n4} → {n4} → {n3}. Tiny moves, big harmony.', chords: ['ii7', 'V7', 'Imaj7'], line: [4, 4, 3] },
+        { phase: 'SING', text: 'Sing it: 4, 4, 3.', chords: ['ii7', 'V7', 'Imaj7'], line: [4, 4, 3] },
+        { phase: 'LISTEN', text: 'Another line: {n1} → {n7} → {n7}.', chords: ['ii7', 'V7', 'Imaj7'], line: [8, 7, 7] },
+        { phase: 'SING', text: 'Sing it: 1, 7, 7.', chords: ['ii7', 'V7', 'Imaj7'], line: [8, 7, 7] },
+      ], 120),
+      tones(swingBand(IIVI), [
+        { text: 'The 3rd and 7th of each chord (the guide tones).', target: 'guide', seconds: 90 },
+        { text: 'The guide-tone line: move to the nearest one each time.', target: 'guide_line', seconds: 90 },
+        { text: 'Line again, now with a rhythm.', target: 'guide_line', seconds: 90 },
+      ], { duration_seconds: 270 }),
+      bandImprov(swingBand(IIVI), [
+        { text: 'Improvise, landing on the guide tone shown on each chord change.', target: 'guide_line' },
+        { text: 'Start phrases on a guide tone.', target: 'guide_line' },
+        { text: 'Free — but keep the smooth line in your ear.', target: 'guide' },
+      ], { duration_seconds: 300, chord_display: 'current' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W10D49', week: 10, day: 49, title: 'Swing and syncopation',
+    objective: 'Straight vs swung eighths, offbeat accents, and imitating swinging rhythms.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 100, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {n2} {n3} {n4} {n5} as even eighth notes, then lazy and long-short.'),
+      { type: 'listen_sing_play', response_seconds: 6, drone: true, listen_text: 'Listen to the feel…',
+        sing_text: 'Sing it with the same feel: "doo-ba doo-ba".', check_text: 'Did you match the feel?',
+        phrases: [{ degs: [1, 2, 3, 4, 5, 4, 3, 2, 1], durs: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2] },
+          { degs: [1, 2, 3, 4, 5, 4, 3, 2, 1], durs: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2], swing: true },
+          { degs: [5, 5, 3, 5, 6, 5, 3], durs: [0.5, 1, 0.5, 1, 0.5, 0.5, 2], swing: true },
+          { degs: [3, 2, 1, 2, 3, 3, 3], durs: [1, 0.5, 1, 0.5, 0.5, 0.5, 2], swing: true, artic: 'accent' }], repetitions: 2 },
+      { type: 'rhythm_echo', backing: swingBand(['ii7', 'V7']), swing: true, degree: 5, repetitions: 2, patterns: [
+        [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1], [-0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5], [1, 0.5, 0.5, -0.5, 0.5, 1],
+        [-0.5, 1, 1, 1, 0.5], [0.5, 1, 0.5, 2], [1.5, 0.5, 1.5, 0.5]] },
+      { type: 'question_answer', backing: swingBand(IIVI), degrees: [1, 2, 3, 4, 5, 6, 7], swing: true, duration_seconds: 300, chord_display: 'current' },
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W10D50', week: 10, day: 50, title: 'Jazz improvisation',
+    objective: 'A slow ii–V–I: motifs, chord tones, passing notes and silence. Record three minutes.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 80, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play the guide-tone line {n4} {n4} {n3} with a swing feel.'),
+      bandImprov(swingBand(IIVI), [
+        { text: 'A short motif. Repeat it on each chord.', target: 'tones' },
+        { text: 'Chord tones on the beat, passing notes between.', target: 'tones' },
+        { text: 'Leave silence. Let the band swing.', target: 'guide_line' },
+        { text: 'Land on the guide tone at each change.', target: 'guide_line' },
+        { text: 'Free.', target: 'tones' },
+      ], { duration_seconds: 360, chord_display: 'current' }),
+      bandImprov(swingBand(IIVI), [
+        { text: 'Performance. Start your phone recorder now.', seconds: 15 },
+        { text: 'Three minutes. Motifs, chord tones, passing notes, silence. Finish on home.', seconds: 180 },
+      ], { duration_seconds: 195, chord_display: 'current', record_performance: true }),
+      REFLECTION,
+    ],
+  },
+
+  /* ===== WEEK 11: developing my own musical voice ===== */
+  {
+    lesson_id: 'W11D51', week: 11, day: 51, title: 'Dynamics',
+    objective: 'The same phrase soft, loud, growing and fading — hear how volume changes its meaning.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 72, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play one note as softly as you can, then as strongly as you can.'),
+      { type: 'listen_sing_play', response_seconds: 7, drone: true, listen_text: 'Listen to the volume…', sing_text: 'Sing it with the same dynamics.',
+        play_text: 'Play it with the same dynamics.', check_text: 'Did you match the dynamics?',
+        phrases: [{ degs: [1, 3, 5, 6, 5], dyn: 'soft' }, { degs: [1, 3, 5, 6, 5], dyn: 'loud' }, { degs: [1, 2, 3, 4, 5, 6, 7, 8], dyn: 'cresc' }, { degs: [8, 7, 6, 5, 4, 3, 2, 1], dyn: 'dim' }],
+        repetitions: 2 },
+      bandImprov(band(['I', 'vi', 'IV', 'V'], 'ballad'), [
+        'Whisper. As soft as you can, still clear.',
+        'Strong and full.',
+        'Grow through each phrase…',
+        '…and fade at the end of each phrase.',
+        'Contrast: one soft phrase, one strong answer.',
+        'Free. Use dynamics on purpose.',
+      ], { duration_seconds: 420, chord_tones: true }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W11D52', week: 11, day: 52, title: 'Articulation',
+    objective: 'How you start and connect notes: legato, staccato, accents — and your instrument’s own techniques.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 84, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} to {n5} smoothly, then short and separated.'),
+      { type: 'listen_sing_play', response_seconds: 6, drone: true, listen_text: 'Listen to how the notes connect…', sing_text: 'Sing it the same way.',
+        play_text: 'Play it the same way.', check_text: 'Did you match the articulation?',
+        phrases: [{ degs: [1, 2, 3, 4, 5], artic: 'legato' }, { degs: [1, 2, 3, 4, 5], artic: 'staccato' },
+          { degs: [1, 2, 3, 4, 5, 4, 3, 2], durs: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], artic: 'accent' }], repetitions: 2 },
+      { type: 'free_improvisation', backing: band(['I', 'IV']), degrees: [1, 2, 3, 4, 5, 6, 7], duration_seconds: 360, prompt_seconds: 45, prompts: [
+        { phase: 'PLAY', guitar: 'Alternate picking: down-up, even and clean.', sax: 'Legato: one breath, smooth air, no tonguing.' },
+        { phase: 'PLAY', guitar: 'Hammer-ons: pick one note, hammer the next.', sax: 'Tonguing: "ta ta ta" — clear starts.' },
+        { phase: 'PLAY', guitar: 'Pull-offs: let the finger flick the string.', sax: 'Accents: push the air on beat 1.' },
+        { phase: 'PLAY', guitar: 'Slides: glide into the note from below.', sax: 'Vibrato: a gentle jaw wave on long notes.' },
+        { phase: 'PLAY', guitar: 'Bends: push the string up to the next note.', sax: 'Pitch inflection: scoop up into a note, or fall off it.' },
+        { phase: 'CREATE', text: 'Mix two techniques in one phrase.' },
+        { phase: 'CREATE', text: 'Apply them to a simple melody — try Twinkle or the Saints.' },
+        { phase: 'CREATE', text: 'Free. Articulation is your accent.' },
+      ] },
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W11D53', week: 11, day: 53, title: 'Rhythm and groove',
+    objective: 'The same notes, many rhythms — over straight, swing and syncopated grooves.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 92, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {n3} {n5} in three different rhythms.'),
+      { type: 'rhythm_echo', backing: 'vamp', degree: 3, repetitions: 1, patterns: [[1, 1, 2], [0.5, 0.5, 1, 2], [1.5, 0.5, 2], [-1, 1, -1, 1], [0.5, 0.5, 0.5, 0.5, 2], [3, 1]] },
+      { type: 'rhythm_echo', backing: swingBand(['ii7', 'V7']), swing: true, degree: 5, repetitions: 1, patterns: [[0.5, 0.5, 0.5, 0.5, 1, 1], [-0.5, 0.5, -0.5, 0.5, 2], [1, 0.5, 0.5, 2], [0.5, 1, 0.5, 2]] },
+      { type: 'rhythm_echo', backing: band(['I7'], 'funk'), degree: 1, repetitions: 2, patterns: [[0.75, 0.75, 0.5, 2], [-0.5, 0.5, -0.5, 0.5, -0.5, 1.5], [0.75, 0.25, 1, 0.75, 0.25, 1], [1.5, 0.5, -1, 1]] },
+      bandImprov(band(['I7'], 'funk'), ['Same three notes — {n1} {n3} {n5} — in a funk groove.', 'Short, tight, rhythmic.', 'Free.'], { duration_seconds: 150, degrees: [1, 3, 5] }),
+      bandImprov(swingBand(['ii7', 'V7']), ['Same three notes, swung.', 'Lazy, behind the beat.'], { duration_seconds: 120, degrees: [1, 3, 5] }),
+      bandImprov(band(['I', 'IV']), ['Same three notes, straight pop.', 'Which groove felt most like you?'], { duration_seconds: 120, degrees: [1, 3, 5] }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W11D54', week: 11, day: 54, title: 'Playing across instruments',
+    objective: 'A conversation between guitar and sax: one asks, the other answers.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 80, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play {n1} {n3} {n5} on each instrument you have.'),
+      { type: 'free_improvisation', backing: band(['I', 'vi', 'IV', 'V']), chord_tones: true, duration_bars: 32, prompts: [
+        { phase: 'PLAY', inst: 'guitar', text: 'Guitar: play a two-bar phrase.', single: 'Play a two-bar question, low on your instrument.', bars: 2 },
+        { phase: 'PLAY', inst: 'sax', text: 'Sax: answer it.', single: 'Answer it, higher up.', bars: 2 },
+      ] },
+      { type: 'free_improvisation', backing: band(['I', 'vi', 'IV', 'V']), chord_tones: true, duration_bars: 32, prompts: [
+        { phase: 'PLAY', inst: 'sax', text: 'Sax asks first now.', single: 'Ask high.', bars: 2 },
+        { phase: 'PLAY', inst: 'guitar', text: 'Guitar answers.', single: 'Answer low.', bars: 2 },
+      ] },
+      { type: 'drone_listening', duration_seconds: 240, drone: true, prompt_seconds: 40, prompts: [
+        { phase: 'PLAY', text: 'Record a short guitar phrase on your phone.', single: 'Record a short phrase on your phone.' },
+        { phase: 'LISTEN', text: 'Play it back. Listen closely.' },
+        { phase: 'PLAY', text: 'Answer it on sax.', single: 'Answer it — new register, new rhythm.' },
+        { phase: 'PLAY', text: 'Now record a sax phrase.', single: 'Record another phrase.' },
+        { phase: 'LISTEN', text: 'Play it back.' },
+        { phase: 'PLAY', text: 'Answer on guitar.', single: 'Answer it.' },
+      ] },
+      bandImprov(band(['I', 'vi', 'IV', 'V']), [
+        'A conversation with yourself: question, answer, question, answer.',
+        'Copy your own question exactly, then change it.',
+        'Free.',
+      ], { duration_seconds: 240, chord_tones: true }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W11D55', week: 11, day: 55, title: 'Finding my sound',
+    objective: 'Improvise in three worlds — ambient, blues, jazz — and notice which feels most like you.',
+    concert_key: 'C', scale: 'major', range: 'mid', tempo_bpm: 80, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play your favourite few notes, three different ways.'),
+      bandImprov(band([{ sym: 'Imaj7', beats: 8 }, { sym: 'IVmaj7', beats: 8 }], 'ambient'), [
+        { text: 'Ambient. Start your phone recorder if you like. Long notes, space, atmosphere.', seconds: 60 },
+        { text: 'Let notes ring into the pad. Breathe.', seconds: 60 },
+        { text: 'Free.', seconds: 60 },
+      ], { duration_seconds: 180, tempo: 60, chord_tones: true }),
+      bandImprov(band(['I7', 'I7', 'I7', 'I7', 'IV7', 'IV7', 'I7', 'I7', 'V7', 'IV7', 'I7', 'V7'], 'shuffle'), [
+        'Blues in A. Pentatonic and the blue note.',
+        'Licks, repetition, attitude.',
+        'Free.',
+      ], { key: 'A', duration_seconds: 180, tempo: 72, degrees: [1, 'b3', 4, 'b5', 5, 'b7'], chord_display: 'current' }),
+      bandImprov(swingBand(IIVI), [
+        'Jazz. Swing, chord tones, guide tones.',
+        'Motifs and space.',
+        'Free.',
+      ], { duration_seconds: 180, tempo: 88, chord_tones: true, chord_display: 'current' }),
+      { type: 'choice', choice: 'environment', question: 'Which world felt most natural to you today?' },
+      { type: 'drone_listening', duration_seconds: 60, prompt_seconds: 20, prompts: [
+        { phase: 'REFLECT', text: 'What did you love about it?' },
+        { phase: 'REFLECT', text: 'Which notes or rhythms kept coming back?' },
+        { phase: 'REFLECT', text: 'Say "save a reflection" to keep a note about your sound.' },
+      ] },
+      REFLECTION,
+    ],
+  },
+
+  /* ===== WEEK 12: independent musical creativity — your own song ===== */
+  {
+    lesson_id: 'W12D56', week: 12, day: 56, title: 'Creating a harmonic foundation',
+    objective: 'Choose a key, build a four-chord progression and a style — the app becomes your band.',
+    concert_key: 'song', scale: 'song', range: 'mid', tempo_bpm: 84, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      { type: 'choice', choice: 'key', question: 'Choose a key for your song. (Guitar-friendly; sax key shown.)' },
+      { type: 'choice', choice: 'progression', question: 'Pick a four-chord progression — or build your own.' },
+      { type: 'choice', choice: 'chord', slot: 0, only_if: 'song.custom', question: 'Chord 1 of 4 — most songs start on I.' },
+      { type: 'choice', choice: 'chord', slot: 1, only_if: 'song.custom', question: 'Chord 2 of 4.' },
+      { type: 'choice', choice: 'chord', slot: 2, only_if: 'song.custom', question: 'Chord 3 of 4.' },
+      { type: 'choice', choice: 'chord', slot: 3, only_if: 'song.custom', question: 'Chord 4 of 4 — V pulls back to the start.' },
+      { type: 'choice', choice: 'style', question: 'Choose a style for your band.' },
+      { type: 'free_improvisation', backing: { song: 'A' }, chord_display: 'full', duration_seconds: 120, prompt_seconds: 30, prompts: [
+        { phase: 'LISTEN', text: 'Your song: {song}. Just listen.' },
+        { phase: 'LISTEN', text: 'Hear where it feels like home, and where it pulls.' },
+        { phase: 'SING', text: 'Hum the root of each chord.' },
+        { phase: 'IMAGINE', text: 'Imagine a melody floating over it.' },
+      ] },
+      tones({ song: 'A' }, [
+        { text: 'Guitar: strum the chords along with the band.', sax: 'Play the root of each chord.', single: 'Play the root of each chord.', target: 'root' },
+        { text: 'Now the 3rd of each chord.', target: 'third' },
+        { text: 'Any chord tone. Learn your harmony by heart.', target: 'tones' },
+      ], { duration_seconds: 240, chord_display: 'full' }),
+      bandImprov({ song: 'A' }, [
+        'Improvise over your own progression.',
+        'Record the band and your guitar on your phone, if you want a backing track to keep.',
+        'Free.',
+      ], { duration_seconds: 240, chord_tones: true, chord_display: 'current' }),
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W12D57', week: 12, day: 57, title: 'Creating a melody',
+    objective: 'Sing an original melody over your progression, find it on both instruments, record the best version.',
+    concert_key: 'song', scale: 'song', range: 'mid', tempo_bpm: 84, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      { type: 'free_improvisation', backing: { song: 'A' }, chord_display: 'current', duration_bars: 48, prompts: [
+        { phase: 'LISTEN', text: 'Your chords: {song}. Listen.', bars: 4 },
+        { phase: 'SING', text: 'Hum along. Let a melody appear — no wrong notes.', bars: 4 },
+        { phase: 'SING', text: 'Again. Keep what you like.', bars: 4 },
+        { phase: 'SING', text: 'Again. Make it a little more definite.', bars: 4 },
+        { phase: 'IMAGINE', text: 'Silently: hear your melody in your head.', bars: 4 },
+        { phase: 'SING', text: 'Sing it out — your melody.', bars: 4 },
+      ] },
+      { type: 'free_improvisation', backing: { song: 'A' }, chord_tones: true, chord_display: 'current', duration_bars: 48, prompts: [
+        { phase: 'SING', text: 'Sing it once more.', bars: 4 },
+        { phase: 'PLAY', inst: 'guitar', text: 'Find it on guitar, a phrase at a time.', single: 'Find it on your instrument, a phrase at a time.', bars: 8 },
+        { phase: 'PLAY', inst: 'guitar', text: 'Play it on guitar.', single: 'Play it through.', bars: 4 },
+        { phase: 'SING', text: 'Sing it.', bars: 4 },
+        { phase: 'PLAY', inst: 'sax', text: 'Find it on sax — by ear, not by note names.', single: 'Play it starting higher.', bars: 8 },
+      ] },
+      { type: 'free_improvisation', backing: { song: 'A' }, chord_tones: true, chord_display: 'current', duration_bars: 32, prompts: [
+        { phase: 'CREATE', text: 'Strongest version. Start your phone recorder now.', bars: 4 },
+        { phase: 'CREATE', text: 'Play your melody. Twice through.', bars: 8 },
+        { phase: 'CREATE', text: 'Once more — with feeling.', bars: 8 },
+        { phase: 'CREATE', text: 'And again, sax this time if you have it.', single: 'Again, your best take.', bars: 8 },
+        { phase: 'REFLECT', text: 'Save it. That melody is yours.', bars: 4 },
+      ] },
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W12D58', week: 12, day: 58, title: 'Developing the composition',
+    objective: 'Add a contrasting B section and develop your motif: AABA form.',
+    concert_key: 'song', scale: 'song', range: 'mid', tempo_bpm: 84, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      { type: 'choice', choice: 'bsection', question: 'Choose chords for a contrasting B section. Your A is {song}.' },
+      { type: 'free_improvisation', backing: { song: 'AABA' }, chord_display: 'full', duration_bars: 16, prompts: [
+        { phase: 'LISTEN', text: 'A: your verse.', bars: 4 },
+        { phase: 'LISTEN', text: 'A again.', bars: 4 },
+        { phase: 'LISTEN', text: 'B: something new — {songB}.', bars: 4 },
+        { phase: 'LISTEN', text: 'A: home again.', bars: 4 },
+      ] },
+      { type: 'free_improvisation', backing: { song: 'AABA' }, chord_tones: true, chord_display: 'current', duration_bars: 48, prompts: [
+        { phase: 'PLAY', text: 'A: your melody.', bars: 4 },
+        { phase: 'PLAY', text: 'A: your melody with one small change.', bars: 4 },
+        { phase: 'CREATE', text: 'B: contrast! Higher or lower, new rhythm, new mood.', bars: 4 },
+        { phase: 'PLAY', text: 'A: back to your melody.', bars: 4 },
+      ] },
+      { type: 'free_improvisation', backing: { song: 'AABA' }, chord_tones: true, chord_display: 'current', duration_bars: 48, prompts: [
+        { phase: 'CREATE', text: 'A: develop the motif — repeat it, then change one note.', bars: 4 },
+        { phase: 'CREATE', text: 'A: soft this time.', bars: 4 },
+        { phase: 'CREATE', text: 'B: build — louder, busier.', bars: 4 },
+        { phase: 'CREATE', text: 'A: resolve — strong and clear.', bars: 4 },
+      ] },
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W12D59', week: 12, day: 59, title: 'Rehearsal',
+    objective: 'Put it together: composed A sections, an improvised B, guitar accompaniment and sax melody.',
+    concert_key: 'song', scale: 'song', range: 'mid', tempo_bpm: 84, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      { type: 'free_improvisation', backing: { song: 'AABA' }, chord_display: 'full', duration_bars: 32, prompts: [
+        { phase: 'PLAY', inst: 'guitar', text: 'Record your guitar part on your phone: strum the whole form with the band.', single: 'Run the whole form: melody on A, improvise on B.', bars: 16 },
+        { phase: 'PLAY', inst: 'guitar', text: 'Once more, keep recording — a second take.', single: 'Again.', bars: 16 },
+      ] },
+      { type: 'drone_listening', duration_seconds: 240, prompt_seconds: 40, prompts: [
+        { phase: 'PLAY', text: 'Play back your guitar recording. Play your sax melody over it.', single: 'Play your song from memory, no band.' },
+        { phase: 'PLAY', text: 'A sections: your melody.', single: 'A: melody.' },
+        { phase: 'CREATE', text: 'B section: improvise.', single: 'B: improvise.' },
+        { phase: 'PLAY', text: 'Last A: melody, and end it beautifully.', single: 'Last A: end it beautifully.' },
+        { phase: 'REFLECT', text: 'Which part needs work? Play just that part again.' },
+        { phase: 'PLAY', text: 'Whole song again.' },
+      ] },
+      { type: 'free_improvisation', backing: { song: 'AABA' }, chord_tones: true, chord_display: 'current', duration_bars: 64, prompts: [
+        { phase: 'PLAY', text: 'A: composed melody.', bars: 4 },
+        { phase: 'PLAY', text: 'A: composed melody.', bars: 4 },
+        { phase: 'CREATE', text: 'B: free improvisation.', bars: 4 },
+        { phase: 'PLAY', text: 'A: composed melody.', bars: 4 },
+      ] },
+      REFLECTION,
+    ],
+  },
+  {
+    lesson_id: 'W12D60', week: 12, day: 60, title: 'Final performance',
+    objective: 'Perform and record your original piece, compare it with Days 5 and 20, and get your personal next steps.',
+    concert_key: 'song', scale: 'song', range: 'mid', tempo_bpm: 76, allowed_scale_degrees: [1, 2, 3, 4, 5, 6, 7], duration_minutes: 30,
+    exercises: [
+      warm('Play your melody once, slowly and calmly.'),
+      { type: 'free_improvisation', backing: { song: 'AABA' }, chord_tones: true, chord_display: 'current', duration_bars: 64, record_performance: true, prompts: [
+        { phase: 'CREATE', text: 'Start your phone recorder. Chorus 1 — A: your melody, simply.', bars: 4 },
+        { phase: 'CREATE', text: 'A: your melody.', bars: 4 },
+        { phase: 'CREATE', text: 'B: contrast.', bars: 4 },
+        { phase: 'CREATE', text: 'A: home.', bars: 4 },
+        { phase: 'CREATE', text: 'Chorus 2 — A: melody with a new rhythm.', bars: 4 },
+        { phase: 'CREATE', text: 'A: add notes, add feeling.', bars: 4 },
+        { phase: 'CREATE', text: 'B: improvise freely.', bars: 4 },
+        { phase: 'CREATE', text: 'A: back to the melody.', bars: 4 },
+        { phase: 'CREATE', text: 'Chorus 3 — A: build.', bars: 4 },
+        { phase: 'CREATE', text: 'A: strongest version.', bars: 4 },
+        { phase: 'CREATE', text: 'B: peak — your boldest playing.', bars: 4 },
+        { phase: 'CREATE', text: 'A: come down.', bars: 4 },
+        { phase: 'CREATE', text: 'Chorus 4 — A: soft and simple.', bars: 4 },
+        { phase: 'CREATE', text: 'A: your melody, one last time.', bars: 4 },
+        { phase: 'CREATE', text: 'B: a gentle memory of everything.', bars: 4 },
+        { phase: 'CREATE', text: 'A: end on home. Let it ring. Stop the recorder.', bars: 4 },
+      ] },
+      { type: 'drone_listening', duration_seconds: 60, prompt_seconds: 20, prompts: [
+        { phase: 'LISTEN', text: 'Listen to today’s recording.' },
+        { phase: 'LISTEN', text: 'Now your Day 5 recording — your first improvisation.' },
+        { phase: 'LISTEN', text: 'And Day 20 — your first story.' },
+      ] },
+      { type: 'drone_listening', duration_seconds: 140, prompt_seconds: 20, prompts: EVAL },
+      { type: 'report' },
+      REFLECTION,
+    ],
+  },
+);
