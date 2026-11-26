@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Musical Intuition: daily ear-first music practice for guitar and tenor sax on Meta Ray-Ban Display.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>Musical Intuition</title>
+<style>
+  /* Musical Intuition on the glasses.
+     Additive display: black = see-through. 600x600. D-pad / arrow keys move a yellow focus ring, pinch = Enter.
+     Everything runs in this page: lessons (lessons.js), music theory, Web Audio sound, progress in localStorage.
+     No server, no keys, works offline after the first visit (sw.js). Web apps can't use the microphone,
+     so the learner marks how each exercise went; pitch feedback is planned via a phone companion. */
+  :root {
+    --accent: #3df5c8; --text: #fff; --dim: #a9b2b8; --focus: #ffd84a;
+    --listen: #7fc8ff; --sing: #ff9ad5; --imagine: #c7a6ff; --play: #3df5c8; --create: #ffb46b;
+    --u: min(1vw, 1vh);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; padding: calc(var(--u) * 3.5); gap: calc(var(--u) * 1.8); }
+  .screen.active { display: flex; }
+  button { font: inherit; color: inherit; background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.5); cursor: pointer;
+    padding: calc(var(--u) * 2) calc(var(--u) * 1.2); font-size: calc(var(--u) * 4.3); font-weight: 700; }
+  button.go { background: #062b24; border-color: var(--accent); }
+  button.sel { border-color: var(--accent); color: var(--accent); }
+  button:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 calc(var(--u) * .6) var(--focus); }
+  .hidden { display: none !important; }
+  .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(var(--u) * 1.6); }
+  .row2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: calc(var(--u) * 1.6); }
+  .brand { font-size: calc(var(--u) * 6); font-weight: 800; margin: 0; }
+  .brand span { color: var(--accent); }
+  .motto { color: var(--dim); font-size: calc(var(--u) * 3.4); }
+  .card { border: calc(var(--u) * .4) solid #2a2a2a; border-radius: calc(var(--u) * 2.5); padding: calc(var(--u) * 2.4); }
+  .card .k { color: var(--accent); font-size: calc(var(--u) * 3.6); font-weight: 800; letter-spacing: .05em; }
+  .card .t { font-size: calc(var(--u) * 6); font-weight: 800; margin: calc(var(--u) * .6) 0; }
+  .card .o { color: var(--dim); font-size: calc(var(--u) * 3.9); line-height: 1.3; }
+  .msg { color: var(--dim); font-size: calc(var(--u) * 4.2); text-align: center; line-height: 1.4; }
+  .spacer { flex: 1; }
+
+  /* lesson */
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: calc(var(--u) * 2); }
+  .ltitle { font-size: calc(var(--u) * 4); color: var(--dim); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lstep { font-size: calc(var(--u) * 3.8); color: var(--dim); white-space: nowrap; }
+  .prow { display: flex; align-items: center; gap: calc(var(--u) * 2); }
+  .phase { font-size: calc(var(--u) * 4.4); font-weight: 900; letter-spacing: .1em; padding: calc(var(--u) * .4) calc(var(--u) * 2);
+    border: calc(var(--u) * .45) solid currentColor; border-radius: 999px; }
+  .ph-LISTEN { color: var(--listen); } .ph-SING { color: var(--sing); } .ph-IMAGINE { color: var(--imagine); }
+  .ph-PLAY { color: var(--play); } .ph-CREATE { color: var(--create); } .ph-REST, .ph-CHECK, .ph-REFLECT, .ph-WARMUP, .ph-PAUSED { color: #fff; }
+  .inst { font-size: calc(var(--u) * 4); font-weight: 700; }
+  .clock { margin-left: auto; font-size: calc(var(--u) * 5); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .bar { height: calc(var(--u) * 1.2); background: #222; border-radius: 99px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+  .stage { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: calc(var(--u) * 2); }
+  .seq { display: flex; gap: calc(var(--u) * 3); justify-content: center; align-items: flex-end; }
+  .deg { display: flex; flex-direction: column; align-items: center; }
+  .seq.playing .deg { opacity: .45; }
+  .deg.on, .seq.single .deg { opacity: 1; }
+  .deg.on b { color: var(--focus); }
+  .deg b { font-size: calc(var(--u) * 14); line-height: 1; font-weight: 900; }
+  .seq.single .deg b { font-size: calc(var(--u) * 20); }
+  .stage { overflow: hidden; }
+  .stage.compact .seq.single .deg b, .stage.compact .deg b { font-size: calc(var(--u) * 11); }
+  .stage.compact .deg small, .stage.compact .seq.single .deg small { font-size: calc(var(--u) * 4.6); }
+  .stage.compact { gap: calc(var(--u) * 1.2); }
+  .seq.many .deg b { font-size: calc(var(--u) * 10); }
+  .deg small { font-size: calc(var(--u) * 5.2); font-weight: 700; color: var(--dim); white-space: nowrap; }
+  .seq.single .deg small { font-size: calc(var(--u) * 7); }
+  .fing { font-size: calc(var(--u) * 3.7); line-height: 1.35; color: #fff; text-align: center; border: calc(var(--u) * .35) dashed #444;
+    border-radius: calc(var(--u) * 2); padding: calc(var(--u) * 1) calc(var(--u) * 2); }
+  .rhythm { position: relative; width: 100%; height: calc(var(--u) * 7); }
+  .rhythm .n { position: absolute; top: calc(var(--u) * 1.5); height: calc(var(--u) * 4); background: var(--accent); border-radius: calc(var(--u) * 1); }
+  .rhythm .r { position: absolute; top: calc(var(--u) * 1.5); height: calc(var(--u) * 4); border: calc(var(--u) * .35) dashed #555; border-radius: calc(var(--u) * 1); }
+  .rhythm .ph { position: absolute; top: 0; bottom: 0; width: calc(var(--u) * .7); background: var(--focus); }
+  .instr { font-size: calc(var(--u) * 5.2); font-weight: 600; line-height: 1.25; text-align: center; min-height: 2.5em; display: flex; align-items: center; justify-content: center; }
+  .beats { display: flex; justify-content: center; gap: calc(var(--u) * 2); height: calc(var(--u) * 2.4); }
+  .beats i { width: calc(var(--u) * 2.4); height: calc(var(--u) * 2.4); border-radius: 50%; background: #333; }
+  .beats i.on { background: var(--focus); }
+  #ctxRow button { background: #0d1d2b; border-color: var(--listen); }
+
+  /* lessons list */
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: calc(var(--u) * 1.6); }
+  .scroll::-webkit-scrollbar { display: none; }
+  .scroll button { text-align: left; }
+  .scroll button small { display: block; color: var(--dim); font-weight: 600; font-size: calc(var(--u) * 3.4); }
+  .stats { color: var(--dim); font-size: calc(var(--u) * 3.6); line-height: 1.35; }
+  .stats b { color: var(--text); }
+  .big { font-size: calc(var(--u) * 7); font-weight: 900; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- HOME -->
+<section id="home" class="screen active">
+  <div>
+    <h1 class="brand">Musical <span>Intuition</span></h1>
+    <div class="motto">Hear it · Feel it · Imagine it · Sing it · Play it · Create it</div>
+  </div>
+  <div class="card">
+    <div class="k" id="hWeek">WEEK 1 · DAY 1</div>
+    <div class="t" id="hTitle">Finding home</div>
+    <div class="o" id="hObj"></div>
+  </div>
+  <div class="row3">
+    <button id="iGuitar">🎸 Guitar</button><button id="iSax">🎷 Sax</button><button id="iBoth">Both</button>
+  </div>
+  <div class="row3">
+    <button id="bMinutes">⏱ 30 min</button><button id="bKey">Key C</button><button id="bTest">🔊 Test</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="row2"><button id="bStart" class="go">▶ Start today's lesson</button><button id="bLessons">Lessons</button></div>
+</section>
+
+<!-- LESSON -->
+<section id="lesson" class="screen">
+  <div class="top"><div class="ltitle" id="lTitle"></div><div class="lstep" id="lStep"></div></div>
+  <div class="prow"><span class="phase" id="lPhase"></span><span class="inst" id="lInst"></span><span class="clock" id="lClock"></span></div>
+  <div class="bar"><i id="lBar"></i></div>
+  <div class="stage" id="lStage">
+    <div class="seq" id="lSeq"></div>
+    <div class="rhythm hidden" id="lRhythm"></div>
+    <div class="fing hidden" id="lFing"></div>
+  </div>
+  <div class="instr" id="lText"></div>
+  <div class="beats" id="lBeats"></div>
+  <div class="row3 hidden" id="ctxRow"></div>
+  <div class="row3" id="toolRow"><button id="bRef">🎵 Note</button><button id="bFing">✋ Fingers</button><button id="bHide">🙈 Hide</button></div>
+  <div class="row3"><button id="bPause">⏸ Pause</button><button id="bRepeat">↻ Repeat</button><button id="bNext" class="go">Next ▶</button></div>
+</section>
+
+<!-- LESSONS + SETTINGS -->
+<section id="lessons" class="screen">
+  <div class="top"><h1 class="brand" style="font-size:calc(var(--u)*5)">Lessons</h1><div class="lstep">Pick one to start</div></div>
+  <div class="scroll" id="lList"></div>
+  <div class="stats" id="lStats"></div>
+  <div class="row3"><button id="bSound">🔉 Low</button><button id="bCues">🗣 Cues off</button><button id="bWipe">🗑 Reset</button></div>
+</section>
+
+<!-- DONE -->
+<section id="done" class="screen">
+  <div class="spacer"></div>
+  <div class="big" id="dTitle">Day 1 done</div>
+  <div class="msg" id="dBody"></div>
+  <div class="spacer"></div>
+  <button id="bHome" class="go">Home</button>
+</section>
+
+<script src="lessons.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const LESSONS = window.LESSONS || [];
+
+/* ======================================================================
+   Learner profile (localStorage only — nothing leaves the glasses)
+   ====================================================================== */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+const DEFAULT_PROFILE = { v: 1, current: 'W01D01', instrument: 'guitar', minutes: 30, key: '', soundHigh: false, cues: false,
+  done: {}, history: [], ear: {}, reflections: [] };
+let P = Object.assign({}, DEFAULT_PROFILE, store.get('intuition.profile', {}));
+const saveP = () => store.set('intuition.profile', P);
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const lessonById = id => LESSONS.find(l => l.lesson_id === id) || LESSONS[0];
+const nextLessonOf = l => LESSONS[LESSONS.indexOf(l) + 1] || null;
+
+/* ======================================================================
+   Music theory: scale degrees -> notes, with B-flat tenor sax transposition
+   Guitar shows concert names. Tenor sax shows written names: written = concert + major 9th
+   (pitch class +2). Notes are spelled by letter so D major shows F♯ and C♯, not G♭ and D♭.
+   ====================================================================== */
+const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const LETTERS = 'CDEFGAB', LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
+const PCS = { C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5, 'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11 };
+const KEY_LIST = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+const SAX_KEY = { C: 'D', Db: 'Eb', D: 'E', Eb: 'F', E: 'F#', F: 'G', 'F#': 'G#', G: 'A', Ab: 'Bb', A: 'B', Bb: 'C', B: 'C#' };
+const ACC = { '-2': '𝄫', '-1': '♭', '0': '', '1': '♯', '2': '𝄪' };
+const pretty = k => k[0] + k.slice(1).replace('#', '♯').replace('b', '♭');
+
+let L = null;   // the lesson in progress (see startLesson)
+const concertKey = () => P.key || (L ? L.lesson.concert_key : lessonById(P.current).concert_key) || 'C';
+const keyFor = inst => inst === 'sax' ? SAX_KEY[concertKey()] : concertKey();
+const degSemis = d => { const i = d - 1; return MAJOR[((i % 7) + 7) % 7] + 12 * Math.floor(i / 7); };
+function spell(key, d) {
+  const i = ((d - 1) % 7 + 7) % 7, li = (LETTERS.indexOf(key[0]) + i) % 7;
+  const target = (PCS[key] + MAJOR[i]) % 12;
+  const acc = (((target - LETTER_PC[li]) % 12) + 18) % 12 - 6;
+  return LETTERS[li] + ACC[acc];
+}
+const noteName = (d, inst) => spell(keyFor(inst), d);
+const tonicMidi = () => 48 + PCS[concertKey()];          // concert C3..B3: inside both guitar and tenor sax range
+const degMidi = d => tonicMidi() + degSemis(d);
+
+/* Fingering help. Guitar: standard tuning positions. Tenor sax: written-pitch fingerings (same for all saxes). */
+const GTR = [[40, '6th string'], [45, '5th string'], [50, '4th string'], [55, '3rd string'], [59, '2nd string'], [64, '1st string']];
+function guitarPos(m) {
+  const best = mm => GTR.map(([o, n]) => [mm - o, n]).filter(([f]) => f >= 0 && f <= 12).sort((a, b) => a[0] - b[0])[0];
+  const fmt = p => p ? (p[0] === 0 ? `open ${p[1]}` : `${p[1]}, fret ${p[0]}`) : '';
+  const lo = best(m), hi = best(m + 12);
+  return [fmt(lo), hi ? `higher: ${fmt(hi)}` : ''].filter(Boolean).join(' · ');
+}
+const SAX_BASE = { 2: 'left 1 2 3 + right 1 2 3', 3: 'left 1 2 3 + right 1 2 3 + E♭ key (right pinky)', 4: 'left 1 2 3 + right 1 2',
+  5: 'left 1 2 3 + right 1', 6: 'left 1 2 3 + right 2', 7: 'left 1 2 3', 8: 'left 1 2 3 + G♯ key (left pinky)', 9: 'left 1 2',
+  10: 'left 1 + bis key', 11: 'left 1', 0: 'left 2 only', 1: 'no keys, all open' };
+function saxFing(m) {
+  const w = m + 14;   // written pitch for tenor sax (major ninth up)
+  if (w >= 62 && w <= 73) return SAX_BASE[w % 12];
+  if (w >= 74 && w <= 85) return SAX_BASE[w % 12] + ' + octave key';
+  if (w === 61) return 'left 1 2 3 + right 1 2 3 + low C♯ (left pinky)';
+  if (w === 60) return 'left 1 2 3 + right 1 2 3 + low C (right pinky)';
+  if (w === 59) return 'left 1 2 3 + right 1 2 3 + low B (left pinky)';
+  if (w === 58) return 'left 1 2 3 + right 1 2 3 + low B♭ (left pinky)';
+  return 'outside the easy range — try another octave';
+}
+const fingering = (d, inst) => inst === 'sax' ? `🎷 ${noteName(d, 'sax')}: ${saxFing(degMidi(d))}` : `🎸 ${noteName(d, 'guitar')}: ${guitarPos(degMidi(d))}`;
+
+/* ======================================================================
+   Audio engine (Web Audio, generated locally — no recordings, works offline)
+   One clock: everything is timed from AudioContext.currentTime, so Pause = suspend the context.
+   ====================================================================== */
+const A = { ac: null, out: null, bus: null, srcs: [], drone: null, backing: null };
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const shift = () => P.soundHigh ? 12 : 0;          // "Sound: high" plays everything an octave up for small speakers
+function audio() {
+  if (!A.ac) {
+    const C = window.AudioContext || window.webkitAudioContext;
+    A.ac = new C();
+    const comp = A.ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4;
+    A.out = A.ac.createGain(); A.out.gain.value = 0.9; A.out.connect(comp); comp.connect(A.ac.destination);
+    newBus();
+  }
+  if (A.ac.state === 'suspended' && !S.paused) A.ac.resume();
+  return A.ac;
+}
+const now = () => A.ac ? A.ac.currentTime : 0;
+const reg = o => { A.srcs.push(o); o.onended = () => { const i = A.srcs.indexOf(o); if (i >= 0) A.srcs.splice(i, 1); }; };
+// Notes and clicks go to a "bus" per exercise. newBus() silences everything scheduled so far (Repeat, Next).
+function newBus() {
+  const c = A.ac; if (!c) return;
+  if (A.bus) { const old = A.bus; old.gain.setTargetAtTime(0, c.currentTime, 0.02); setTimeout(() => { try { old.disconnect(); } catch (e) {} }, 400); }
+  A.srcs.splice(0).forEach(s => { try { s.stop(c.currentTime + 0.1); } catch (e) {} });
+  A.bus = c.createGain(); A.bus.connect(A.out);
+}
+function pluck(midi, t, dur, vol = 0.5, dest) {
+  const c = A.ac, f = mtof(midi + shift());
+  const o1 = c.createOscillator(), o2 = c.createOscillator(), g2 = c.createGain(), lp = c.createBiquadFilter(), g = c.createGain();
+  o1.type = 'triangle'; o2.type = 'sawtooth'; o1.frequency.value = f; o2.frequency.value = f; g2.gain.value = 0.2;
+  lp.type = 'lowpass'; lp.frequency.setValueAtTime(3500, t); lp.frequency.exponentialRampToValueAtTime(1200, t + 0.6);
+  o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(dest || A.bus);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(vol * 0.45, t + 0.25); g.gain.setTargetAtTime(0.0001, t + Math.max(0.1, dur - 0.05), 0.07);
+  [o1, o2].forEach(o => { o.start(t); o.stop(t + dur + 0.6); reg(o); });
+}
+function click(t, accent, dest) {
+  const c = A.ac, o = c.createOscillator(), g = c.createGain();
+  o.type = 'square'; o.frequency.value = accent ? 2100 : 1500; o.connect(g); g.connect(dest || A.bus);
+  g.gain.setValueAtTime(accent ? 0.12 : 0.07, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+  o.start(t); o.stop(t + 0.05); reg(o);
+}
+function noise(t, dur, freq, type, vol, dest) {
+  const c = A.ac, len = Math.ceil(c.sampleRate * dur), buf = c.createBuffer(1, len, c.sampleRate), ch = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+  const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+  s.buffer = buf; f.type = type; f.frequency.value = freq; s.connect(f); f.connect(g); g.connect(dest);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); s.start(t); reg(s);
+}
+function kick(t, dest) {
+  const c = A.ac, o = c.createOscillator(), g = c.createGain();
+  o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.14); o.connect(g); g.connect(dest);
+  g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25); o.start(t); o.stop(t + 0.3); reg(o);
+}
+function playDegs(degs, t, spb = 0.9) { degs.forEach((d, i) => pluck(degMidi(d), t + i * spb, spb * 0.9)); }
+
+// Drone: the tonic, held. Survives between exercises so home never drops out.
+function droneOn(level = 0.22) {
+  audio(); const c = A.ac, m = tonicMidi() + shift();
+  if (A.drone && A.drone.m === m) { A.drone.g.gain.setTargetAtTime(level, c.currentTime, 0.3); return; }
+  droneOff(true);
+  const f = mtof(m), g = c.createGain(), lp = c.createBiquadFilter();
+  g.gain.value = 0.0001; g.connect(A.out); lp.type = 'lowpass'; lp.frequency.value = 1000; lp.connect(g);
+  const oscs = [['sine', f, 1], ['sawtooth', f, 0.2], ['sawtooth', f * 1.003, 0.16], ['sine', f * 2, 0.3]].map(([type, fr, v]) => {
+    const o = c.createOscillator(), gg = c.createGain(); o.type = type; o.frequency.value = fr; gg.gain.value = v; o.connect(gg); gg.connect(lp); o.start(); return o;
+  });
+  g.gain.setTargetAtTime(level, c.currentTime, 0.6);
+  A.drone = { m, g, oscs };
+}
+function droneOff(fast) {
+  if (!A.drone) return; const d = A.drone, c = A.ac; A.drone = null;
+  d.g.gain.setTargetAtTime(0.0001, c.currentTime, fast ? 0.05 : 0.4);
+  d.oscs.forEach(o => { try { o.stop(c.currentTime + (fast ? 0.4 : 2.5)); } catch (e) {} });
+}
+
+// One-chord backing band (pad + bass + soft drums), scheduled a little ahead from the tick loop.
+function backingStart(bpm) {
+  audio(); backingStop(); const c = A.ac, t = c.currentTime + 0.1, spb = 60 / bpm;
+  const g = c.createGain(); g.gain.value = 1; g.connect(A.out);
+  const pg = c.createGain(), lp = c.createBiquadFilter(); pg.gain.value = 0.0001; lp.type = 'lowpass'; lp.frequency.value = 900; lp.connect(pg); pg.connect(g);
+  const pad = [0, 4, 7, 12].map(s => { const o = c.createOscillator(), gg = c.createGain(); o.type = 'sawtooth'; o.frequency.value = mtof(tonicMidi() + 12 + s + shift()); gg.gain.value = 0.05; o.connect(gg); gg.connect(lp); o.start(); return o; });
+  for (let i = 0; i < 4; i++) click(t + i * spb, i === 0, g);     // count-in
+  pg.gain.setTargetAtTime(0.5, t + 4 * spb, 0.8);
+  A.backing = { bpm, spb, start: t + 4 * spb, next: t + 4 * spb, i: 0, g, pad, drums: true };
+}
+function backingTick(tn) {
+  const b = A.backing; if (!b) return;
+  while (b.next < tn + 0.35) {
+    const beat = b.i % 4, t = b.next;
+    if (b.drums) {
+      if (beat === 0 || beat === 2) kick(t, b.g);
+      if (beat === 1 || beat === 3) noise(t, 0.12, 1800, 'bandpass', 0.18, b.g);
+      noise(t, 0.04, 7000, 'highpass', 0.06, b.g); noise(t + b.spb / 2, 0.04, 7000, 'highpass', 0.04, b.g);
+    }
+    if (beat === 0 || beat === 2) pluck(tonicMidi() + (beat === 2 ? 7 : 0), t, b.spb * 1.6, 0.32, b.g);
+    b.next += b.spb; b.i++;
+  }
+}
+function backingStop() {
+  const b = A.backing; if (!b) return; A.backing = null; const c = A.ac;
+  b.g.gain.setTargetAtTime(0.0001, c.currentTime, 0.1); b.pad.forEach(o => { try { o.stop(c.currentTime + 0.8); } catch (e) {} });
+  setTimeout(() => { try { b.g.disconnect(); } catch (e) {} }, 1200);
+}
+const backingBeat = tn => { const b = A.backing; if (!b) return null; const from = tn < b.start ? b.start - 4 * b.spb : b.start; return { n: 4, i: Math.max(0, Math.floor((tn - from) / b.spb)) % 4 }; };
+
+// Optional spoken cues (off by default — they compete with the drone).
+function cue(text) { if (!P.cues || !window.speechSynthesis) return; try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = 1; speechSynthesis.speak(u); } catch (e) {} }
+
+/* ======================================================================
+   Session state + exercise runners
+   Each runner: begin() starts it; update(t) fills r.ui and returns true when a timed exercise ends;
+   action(name) handles buttons and may return 'next' or {finish}.
+   ====================================================================== */
+const S = { paused: false, tempoMul: 1, hideNotes: false, showFing: false };
+const F = () => (P.minutes || 30) / 30;                                    // session-length factor
+const scaleSec = s => Math.max(20, Math.round((s || 60) * F()));
+const scaleN = n => Math.max(1, Math.round((n || 1) * F()));
+const tempo = () => (L ? L.lesson.tempo_bpm || 65 : 65) * S.tempoMul;
+const PLAYING = ['warmup', 'find_note', 'rhythm_echo', 'listen_sing_play', 'random_note_recognition', 'free_improvisation'];
+function instFor(ex, el, dur) {
+  if (ex._split) return el < dur / 2 ? 'guitar' : 'sax';
+  return ex._inst || null;
+}
+function textFor(p, inst) { return (inst && p[inst]) || p.text || p.guitar || ''; }
+function fill(s, inst) {
+  return String(s || '').replace(/\{n(\d)\}/g, (m, d) => inst ? noteName(+d, inst) : `${noteName(+d, 'guitar')} (sax ${noteName(+d, 'sax')})`);
+}
+
+function PromptRunner(ex) {
+  const r = { ui: {} }, dur = scaleSec(ex.duration_seconds), ps = ex.prompt_seconds || 30;
+  const prompts = ex.prompts && ex.prompts.length ? ex.prompts : [{ phase: 'LISTEN', text: ex.text || '' }];
+  const lens = prompts.map(p => p.seconds || ps), cycle = lens.reduce((a, b) => a + b, 0);
+  r.begin = () => {
+    newBus(); r.t0 = now(); r.idx = -1; r.lastInst = null;
+    if (ex.backing === 'vamp') { droneOff(); backingStart(tempo()); } else { backingStop(); if (ex.drone) droneOn(ex.drone_level); else droneOff(); }
+  };
+  r.update = t => {
+    const el = t - r.t0; if (el >= dur) return true;
+    let x = el % cycle, k = 0; while (x >= lens[k]) { x -= lens[k]; k++; }
+    const inst = instFor(ex, el, dur), p = prompts[k];
+    if (k !== r.idx) { r.idx = k; if (p.play) playDegs(p.play, t + 0.05); cue(fill(textFor(p, inst), inst)); }
+    let text = fill(textFor(p, inst), inst);
+    if (ex._split && el >= dur / 2 && el < dur / 2 + 8) text = 'Switch to tenor sax 🎷 — same idea, new instrument.';
+    if (ex._split && inst !== r.lastInst) { if (r.lastInst) cue('Switch to sax'); r.lastInst = inst; }
+    r.ui = { phase: p.phase || 'LISTEN', inst, text, degs: ex.degrees || (ex.type === 'warmup' ? null : [1]), hidden: !!ex.hide_degrees,
+      remain: dur - el, total: dur, beat: backingBeat(t), ctx: ex.confirm ? [['ok', ex.confirm]] : null, fingAuto: !!ex.show_fingering };
+    return false;
+  };
+  r.action = a => { if (a === 'ok') return 'next'; if (a === 'repeat') r.begin(); if (a === 'hint') S.showFing = true; };
+  return r;
+}
+
+function RhythmRunner(ex) {
+  const r = { ui: {} }, pats = ex.patterns || [[1, 1, 1, 1]], reps = scaleN(ex.repetitions || 2), deg = ex.degree || 1;
+  const rounds = []; pats.forEach(p => { for (let k = 0; k < reps; k++) rounds.push(p); });
+  function schedRound(i) {
+    const spb = r.spb, s = r.t0 + 4 * spb + i * 8 * spb;
+    for (let b = 0; b < 8; b++) click(s + b * spb, b % 4 === 0);
+    let pos = 0; rounds[i].forEach(d => { if (d > 0) pluck(degMidi(deg), s + pos * spb, Math.max(0.15, d * spb * 0.92), 0.5); pos += Math.abs(d); });
+  }
+  r.begin = () => {
+    newBus(); backingStop(); if (ex.drone) droneOn(ex.drone_level || 0.1); else droneOff();
+    r.spb = 60 / tempo(); r.t0 = now() + 0.15; r.sched = -1; r.dur = 4 * r.spb + rounds.length * 8 * r.spb;
+    for (let b = 0; b < 4; b++) click(r.t0 + b * r.spb, b === 0);
+  };
+  r.update = t => {
+    const el = t - r.t0, spb = r.spb, inst = instFor(ex, 0, 1);
+    if (el >= r.dur) return true;
+    const ri = el < 4 * spb ? -1 : Math.floor((el - 4 * spb) / (8 * spb));
+    const nextStart = r.t0 + 4 * spb + (r.sched + 1) * 8 * spb;
+    if (r.sched + 1 < rounds.length && t >= nextStart - 0.4) { r.sched++; schedRound(r.sched); }
+    let phase = 'LISTEN', text = 'Get ready…', rhythm = null, beat = { n: 4, i: Math.max(0, Math.floor(el / spb)) % 4 };
+    if (ri >= 0) {
+      const inRound = el - 4 * spb - ri * 8 * spb, call = inRound < 4 * spb, posBeats = (inRound / spb) % 4;
+      phase = call ? 'LISTEN' : 'PLAY';
+      text = call ? 'Listen to the rhythm…' : `Your turn — echo it on ${inst ? noteName(deg, inst) : 'home'}.`;
+      rhythm = { pattern: rounds[ri], pos: posBeats / 4, key: ri };
+    }
+    r.ui = { phase, inst, text, degs: [deg], remain: r.dur - el, total: r.dur, beat, rhythm, item: ri >= 0 ? `${ri + 1} of ${rounds.length}` : '' };
+    return false;
+  };
+  r.action = a => { if (a === 'repeat' || a === 'hint') r.begin(); };
+  return r;
+}
+
+function PhraseRunner(ex) {
+  const r = { ui: {} }, phrases = ex.phrases || [ex.phrase || [1]], reps = scaleN(ex.repetitions || 3);
+  const items = []; phrases.forEach(ph => { for (let k = 0; k < reps; k++) items.push(ph); });
+  let it = 0;
+  function startItem() {
+    newBus(); const spb = 60 / tempo(), ph = items[it], s0 = now() + 0.15, call = s0 + 2 * spb;
+    pluck(degMidi(1), s0, spb * 0.9, 0.3);            // home reference
+    ph.forEach((d, i) => pluck(degMidi(d), call + i * spb, spb * 0.9));
+    const resp = ex.response_seconds || Math.max(4, ph.length * spb + 2), callEnd = call + ph.length * spb + 0.4;
+    r.seg = { s0, call, callEnd, singEnd: callEnd + resp, playEnd: callEnd + 2 * resp, spb, ph };
+  }
+  r.begin = () => { backingStop(); if (ex.drone) droneOn(ex.drone_level || 0.1); else droneOff(); it = 0; startItem(); };
+  r.update = t => {
+    const s = r.seg, inst = instFor(ex, 0, 1); let phase, text, active = -1, wait = false;
+    if (t < s.call) { phase = 'LISTEN'; text = 'Home note…'; }
+    else if (t < s.callEnd) { phase = 'LISTEN'; text = 'Listen…'; active = Math.min(s.ph.length - 1, Math.floor((t - s.call) / s.spb)); }
+    else if (t < s.singEnd) { phase = 'SING'; text = 'Sing it back.'; }
+    else if (t < s.playEnd) { phase = 'PLAY'; text = inst ? `Now play it on ${inst === 'sax' ? 'sax' : 'guitar'}.` : 'Now play it.'; }
+    else { phase = 'CHECK'; text = 'How did that go?'; wait = true; }
+    r.ui = { phase, inst, text, degs: s.ph, active, hidden: !!ex.hide_answer && !wait, remain: wait ? null : s.playEnd - t, total: s.playEnd - s.s0,
+      ctx: wait ? [['got', '✓ Got it'], ['again', '↻ Again']] : null, item: `${it + 1} of ${items.length}` };
+    return false;
+  };
+  r.action = a => {
+    if (a === 'got') { it++; if (it >= items.length) return 'next'; startItem(); }
+    else if (a === 'again' || a === 'repeat') startItem();
+    else if (a === 'hint') { S.tempoMul = Math.max(0.5, S.tempoMul * 0.85); startItem(); }
+  };
+  return r;
+}
+
+function RecogRunner(ex) {
+  const r = { ui: {} }, allowed = ex.allowed_degrees || [1, 5];
+  const blocks = ex.blocks || [{ length: ex.phrase_length || 1, trials: ex.trials || 10 }];
+  const queue = []; blocks.forEach(b => { for (let k = 0; k < scaleN(b.trials); k++) queue.push(b.length); });
+  let i = 0, stage = 'play', ph = [1], prev = '', misses = 0, hinted = false;
+  function gen(n) {
+    let p, tries = 0;
+    do { p = Array.from({ length: n }, () => allowed[Math.floor(Math.random() * allowed.length)]); tries++; } while (p.join() === prev && tries < 12);
+    prev = p.join(); return p;
+  }
+  function play(withHome) {
+    newBus(); const spb = 60 / tempo(); let s = now() + 0.15;
+    if (withHome) { pluck(degMidi(1), s, spb * 0.9, 0.3); s += 2 * spb; }
+    ph.forEach((d, k) => pluck(degMidi(d), s + k * spb, spb * 0.9));
+    r.ps = s; r.pe = s + ph.length * spb + 0.3; r.spb = spb; stage = 'play';
+  }
+  function trial() { ph = gen(queue[i]); hinted = false; play(i === 0 || misses >= 2); }   // replay home after two misses in a row
+  r.begin = () => { backingStop(); droneOn(0.14); i = 0; misses = 0; trial(); };
+  r.update = t => {
+    let phase = 'LISTEN', text = 'Listen… which number?', ctx = null, active = -1, hidden = true;
+    if (stage === 'play' && t >= r.pe) stage = 'answer';
+    if (stage === 'play' && t >= r.ps) active = Math.min(ph.length - 1, Math.floor((t - r.ps) / r.spb));
+    if (stage === 'answer') { phase = 'SING'; text = 'Sing or play it back. Then reveal.'; ctx = [['reveal', '👁 Reveal'], ['replay', '↻ Hear again']]; }
+    if (stage === 'shown') { phase = 'CHECK'; hidden = false; text = 'Were you right?'; ctx = [['right', '✓ I had it'], ['miss', '✗ Missed it']]; }
+    if (hinted && stage !== 'shown') text += ` (one of ${allowed.join(' · ')})`;
+    r.ui = { phase, inst: instFor(ex, 0, 1), text, degs: ph, active, hidden, ctx, item: `${i + 1} of ${queue.length}` };
+    return false;
+  };
+  r.action = a => {
+    if (a === 'reveal') stage = 'shown';
+    else if (a === 'replay' || a === 'repeat') play(false);
+    else if (a === 'hint') { hinted = true; play(true); }
+    else if (a === 'right' || a === 'miss') {
+      const ok = a === 'right';
+      ph.forEach(d => { const e = P.ear[d] || [0, 0]; e[1]++; if (ok) e[0]++; P.ear[d] = e; }); saveP();
+      misses = ok ? 0 : misses + 1; i++;
+      if (i >= queue.length) return 'next';
+      trial();
+    }
+  };
+  return r;
+}
+
+function ReflectRunner() {
+  const r = { ui: {} }; let feel = null;
+  r.begin = () => { newBus(); droneOff(); backingStop(); feel = null; };
+  r.update = () => {
+    const nx = nextLessonOf(L.lesson), day = L.lesson.day;
+    if (!feel) r.ui = { phase: 'REFLECT', text: 'How did today feel?', ctx: [['easy', 'Easy'], ['ok', 'Just right'], ['hard', 'Hard']] };
+    else {
+      let ctx = nx ? [['move', `Day ${nx.day} ▶`], ['stay', `Repeat Day ${day}`]] : [['stay', 'Finish']];
+      if (feel === 'hard' && nx) ctx = ctx.reverse();
+      r.ui = { phase: 'REFLECT', text: feel === 'hard' ? 'Hard means you are learning. What next time?' : 'Lovely. What next time?', ctx };
+    }
+    r.ui.degs = null; return false;
+  };
+  r.action = a => { if (['easy', 'ok', 'hard'].includes(a)) { feel = a; return; } if (a === 'move' || a === 'stay') return { finish: true, feel, next: a }; };
+  return r;
+}
+
+const RUNNERS = { warmup: PromptRunner, drone_listening: PromptRunner, find_note: PromptRunner, free_improvisation: PromptRunner,
+  rhythm_echo: RhythmRunner, listen_sing_play: PhraseRunner, random_note_recognition: RecogRunner, reflection: ReflectRunner };
+
+/* ======================================================================
+   Lesson flow
+   ====================================================================== */
+function startLesson(id, replace) {
+  endLesson();
+  const lesson = lessonById(id || P.current); audio();
+  S.paused = false; S.tempoMul = 1; S.hideNotes = false; S.showFing = false;
+  let flip = 0;
+  const exs = lesson.exercises.map(e0 => {
+    const e = Object.assign({}, e0), plays = PLAYING.includes(e.type) || (e.prompts || []).some(p => p.phase === 'PLAY');
+    if (P.instrument === 'both') {
+      if (e.type === 'warmup' || e.type === 'free_improvisation') e._split = true;   // half guitar, half sax
+      else if (plays) e._inst = flip++ % 2 ? 'sax' : 'guitar';                        // alternate between exercises
+    } else e._inst = P.instrument;
+    return e;
+  });
+  L = { lesson, exs, i: -1, ac0: now(), ctxKey: '?' };   // '?' forces the answer buttons to redraw
+  keepAwake(true);
+  if (replace) { history.replaceState({ screen: 'lesson', depth: (history.state && history.state.depth) || 1 }, ''); show('lesson', 'bNext'); }
+  else go('lesson', 'bNext');
+  nextEx();
+}
+function nextEx() {
+  if (!L) return;
+  L.i++; S.showFing = false;
+  if (L.i >= L.exs.length) return finishLesson({});
+  L.ex = L.exs[L.i]; L.r = RUNNERS[L.ex.type](L.ex); L.r.begin(); L.r.update(now()); render();
+}
+function doAction(a) {
+  if (!L || !L.r || S.paused) return;
+  const res = L.r.action(a);
+  if (res === 'next') nextEx();
+  else if (res && res.finish) finishLesson(res);
+  else { L.r.update(now()); render(); }
+}
+function finishLesson(res) {
+  if (!L) return;
+  const l = L.lesson, nx = nextLessonOf(l), minutes = Math.max(1, Math.round((now() - L.ac0) / 60));
+  P.history.push({ id: l.lesson_id, date: todayISO(), minutes, instrument: P.instrument, feel: res.feel || '' });
+  if (P.history.length > 300) P.history = P.history.slice(-300);
+  P.done[l.lesson_id] = (P.done[l.lesson_id] || 0) + 1;
+  if (res.next === 'move' && nx) P.current = nx.lesson_id; else P.current = l.lesson_id;   // never moves on by calendar alone
+  saveP();
+  endLesson();
+  const cur = lessonById(P.current);
+  $('dTitle').textContent = `Day ${l.day} done`;
+  $('dBody').innerHTML = `${minutes} min of practice. 🎶<br><br>Next time: <b>Day ${cur.day} · ${esc(cur.title)}</b>`;
+  history.replaceState({ screen: 'done', depth: (history.state && history.state.depth) || 1 }, '');
+  show('done', 'bHome');
+}
+function endLesson() {
+  if (A.ac) { newBus(); droneOff(true); backingStop(); if (A.ac.state === 'suspended') A.ac.resume(); }
+  L = null; S.paused = false; keepAwake(false);
+  try { speechSynthesis.cancel(); } catch (e) {}
+}
+function togglePause(force) {
+  if (!L) return;
+  S.paused = force != null ? force : !S.paused;
+  if (S.paused) A.ac.suspend(); else A.ac.resume();
+  render();
+}
+
+/* ======================================================================
+   Rendering
+   ====================================================================== */
+const PH_LABEL = { 'WARM UP': 'WARM UP', LISTEN: 'LISTEN', SING: 'SING', IMAGINE: 'IMAGINE', PLAY: 'PLAY', CREATE: 'CREATE', REST: 'REST', CHECK: 'CHECK', REFLECT: 'REFLECT' };
+const fmt = s => { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const instLabel = i => i === 'sax' ? '🎷 Tenor sax' : i === 'guitar' ? '🎸 Guitar' : (P.instrument === 'both' ? '🎸 + 🎷' : '');
+function render() {
+  if (!L || !L.r) return;
+  const u = L.r.ui || {}, l = L.lesson;
+  $('lTitle').textContent = `Day ${l.day} · ${l.title} · key ${pretty(concertKey())}`;
+  $('lStep').textContent = `${L.i + 1}/${L.exs.length}${u.item ? ' · ' + u.item : ''}`;
+  const ph = S.paused ? 'PAUSED' : (u.phase || '');
+  const pe = $('lPhase'); pe.textContent = PH_LABEL[ph] || ph; pe.className = 'phase ph-' + ph.replace(' ', '');
+  $('lInst').textContent = instLabel(u.inst);
+  $('lClock').textContent = u.remain != null ? fmt(u.remain) : '';
+  $('lBar').style.width = u.total ? Math.min(100, (1 - (u.remain || 0) / u.total) * 100) + '%' : '0%';
+
+  // scale degrees + note names
+  const seq = $('lSeq'), degs = u.degs || [];
+  const hide = S.hideNotes || u.hidden;
+  const sk = JSON.stringify([degs, u.active, hide, u.inst, concertKey(), P.instrument]);
+  if (sk !== seq.dataset.k) {
+    seq.dataset.k = sk;
+    seq.className = 'seq' + (degs.length === 1 ? ' single' : degs.length > 4 ? ' many' : '') + (u.active >= 0 ? ' playing' : '');
+    seq.innerHTML = degs.map((d, i) => {
+      const nm = u.inst ? noteName(d, u.inst) : (P.instrument === 'both' ? `🎸${noteName(d, 'guitar')} 🎷${noteName(d, 'sax')}` : noteName(d, P.instrument));
+      return `<div class="deg${i === u.active ? ' on' : ''}"><b>${hide ? '?' : d}</b><small>${hide ? '&nbsp;' : esc(nm)}</small></div>`;
+    }).join('');
+  }
+  // fingering
+  const fd = degs.length ? degs[u.active > 0 ? u.active : 0] : null, wantF = (S.showFing || u.fingAuto) && fd && !hide;
+  $('lFing').classList.toggle('hidden', !wantF);
+  $('lStage').classList.toggle('compact', !!(wantF || u.rhythm));
+  if (wantF) {
+    const lines = u.inst ? [fingering(fd, u.inst)] : P.instrument === 'both' ? [fingering(fd, 'guitar'), fingering(fd, 'sax')] : [fingering(fd, P.instrument)];
+    const fk = lines.join('|'); if ($('lFing').dataset.k !== fk) { $('lFing').dataset.k = fk; $('lFing').innerHTML = lines.map(esc).join('<br>'); }
+  }
+  // rhythm strip
+  const rh = $('lRhythm');
+  rh.classList.toggle('hidden', !u.rhythm);
+  if (u.rhythm) {
+    if (rh.dataset.k !== String(u.rhythm.key)) {
+      rh.dataset.k = u.rhythm.key; let pos = 0;
+      rh.innerHTML = u.rhythm.pattern.map(d => { const a = Math.abs(d), h = `<div class="${d > 0 ? 'n' : 'r'}" style="left:${pos / 4 * 100}%;width:calc(${a / 4 * 100}% - 1.2vmin)"></div>`; pos += a; return h; }).join('') + '<div class="ph" id="lPh"></div>';
+    }
+    $('lPh').style.left = (u.rhythm.pos * 100) + '%';
+  }
+  $('lText').textContent = S.paused ? 'Paused. Pinch Resume when you are ready.' : (u.text || '');
+  // beat dots
+  const bt = $('lBeats'), bk = u.beat ? u.beat.n + ':' + u.beat.i : '';
+  if (bt.dataset.k !== bk) { bt.dataset.k = bk; bt.innerHTML = u.beat ? Array.from({ length: u.beat.n }, (_, i) => `<i class="${i === u.beat.i ? 'on' : ''}"></i>`).join('') : ''; }
+  // context buttons replace the tool row while waiting for an answer
+  const ck = u.ctx ? JSON.stringify(u.ctx) : '';
+  if (ck !== L.ctxKey) {
+    L.ctxKey = ck;
+    const row = $('ctxRow');
+    row.innerHTML = (u.ctx || []).map(([id, label]) => `<button data-a="${id}">${esc(label)}</button>`).join('');
+    row.style.gridTemplateColumns = `repeat(${Math.max(1, (u.ctx || []).length)}, 1fr)`;
+    row.classList.toggle('hidden', !u.ctx); $('toolRow').classList.toggle('hidden', !!u.ctx);
+    row.querySelectorAll('button').forEach(b => b.onclick = () => doAction(b.dataset.a));
+    if (u.ctx) row.querySelector('button').focus();
+    else if (!document.activeElement || document.activeElement === document.body || document.activeElement.offsetParent === null) $('bNext').focus();
+  }
+  $('bPause').textContent = S.paused ? '▶ Resume' : '⏸ Pause';
+  $('bFing').classList.toggle('sel', S.showFing);
+  $('bHide').classList.toggle('sel', S.hideNotes);
+}
+
+// One clock drives everything (100 ms). Paused = AudioContext suspended, so time stands still.
+setInterval(() => {
+  if (!L || !L.r) return;
+  if (!S.paused) { const t = now(); backingTick(t); if (L.r.update(t)) { nextEx(); return; } }
+  render();
+}, 100);
+
+/* ======================================================================
+   Home, lessons list, settings
+   ====================================================================== */
+function renderHome() {
+  const l = lessonById(P.current);
+  $('hWeek').textContent = `WEEK ${l.week} · DAY ${l.day}${P.done[l.lesson_id] ? ' · practised ' + P.done[l.lesson_id] + '×' : ''}`;
+  $('hTitle').textContent = l.title; $('hObj').textContent = l.objective;
+  ['guitar', 'sax', 'both'].forEach(i => $('i' + i[0].toUpperCase() + i.slice(1)).classList.toggle('sel', P.instrument === i));
+  $('bMinutes').textContent = `⏱ ${P.minutes} min`;
+  $('bKey').textContent = P.key ? `Key ${pretty(P.key)}` : `Key ${pretty(l.concert_key)}`;
+  $('bStart').textContent = L ? `▶ Resume Day ${L.lesson.day}` : "▶ Start today's lesson";
+}
+function renderLessons() {
+  $('lList').innerHTML = LESSONS.map(l => `<button data-id="${l.lesson_id}" class="${l.lesson_id === P.current ? 'sel' : ''}">W${l.week} · Day ${l.day} · ${esc(l.title)}${P.done[l.lesson_id] ? ' ✓' + P.done[l.lesson_id] : ''}<small>${esc(l.objective)}</small></button>`).join('')
+    + `<div class="stats">Weeks 2–12 arrive as new lessons in lessons.js.</div>`;
+  $('lList').querySelectorAll('button').forEach(b => b.onclick = () => { P.current = b.dataset.id; saveP(); startLesson(P.current, true); });
+  const wk = Date.now() - 7 * 864e5, recent = P.history.filter(h => new Date(h.date + 'T12:00').getTime() >= wk);
+  const ear = Object.keys(P.ear).sort().map(d => { const [ok, n] = P.ear[d]; return `${d}: <b>${Math.round(100 * ok / n)}%</b>`; }).join(' · ');
+  $('lStats').innerHTML = `This week: <b>${recent.length}</b> sessions · <b>${recent.reduce((a, h) => a + h.minutes, 0)}</b> min`
+    + (ear ? `<br>Ear (right first time): ${ear}` : '');
+  $('bSound').textContent = `🔉 ${P.soundHigh ? 'High' : 'Low'}`;
+  $('bCues').textContent = `🗣 Cues ${P.cues ? 'on' : 'off'}`;
+  $('bWipe').textContent = '🗑 Reset';
+}
+
+/* screens + Back (history) */
+let screen = 'home';
+function show(id, focusId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  screen = id;
+  if (focusId) setTimeout(() => { const el = $(focusId); if (el) el.focus(); }, 0);
+}
+function go(id, focusId) { history.pushState({ screen: id, depth: ((history.state && history.state.depth) || 0) + 1 }, ''); show(id, focusId); }
+window.addEventListener('popstate', e => {
+  const s = (e.state && e.state.screen) || 'home';
+  if (s === 'lesson' && L) { show('lesson', 'bNext'); render(); return; }
+  if (L && !S.paused) togglePause(true);           // Back out of a lesson = pause it; Resume from home
+  renderHome(); show('home', 'bStart');
+});
+
+/* buttons */
+['guitar', 'sax', 'both'].forEach(i => $('i' + i[0].toUpperCase() + i.slice(1)).onclick = () => { P.instrument = i; saveP(); renderHome(); });
+$('bMinutes').onclick = () => { const o = [10, 20, 30, 45, 60]; P.minutes = o[(o.indexOf(P.minutes) + 1) % o.length]; saveP(); renderHome(); };
+$('bKey').onclick = () => { const o = [''].concat(KEY_LIST); P.key = o[(o.indexOf(P.key) + 1) % o.length]; saveP(); renderHome(); };
+$('bTest').onclick = () => {
+  if (L) return;
+  audio(); newBus(); const t = now() + 0.1;
+  droneOn(0.22); playDegs([1, 3, 5, 1], t + 1.2, 0.5);
+  setTimeout(() => { if (!L) droneOff(); }, 4000);
+};
+$('bStart').onclick = () => { if (L) { go('lesson', 'bNext'); if (S.paused) togglePause(false); render(); } else startLesson(P.current); };
+$('bLessons').onclick = () => { renderLessons(); go('lessons', 'lList'); setTimeout(() => { const b = $('lList').querySelector('button.sel') || $('lList').querySelector('button'); if (b) b.focus(); }, 0); };
+$('bSound').onclick = () => { P.soundHigh = !P.soundHigh; saveP(); renderLessons(); };
+$('bCues').onclick = () => { P.cues = !P.cues; saveP(); renderLessons(); };
+$('bWipe').onclick = () => {
+  const b = $('bWipe');
+  if (b.textContent !== 'Sure? Pinch again') { b.textContent = 'Sure? Pinch again'; return; }
+  P = Object.assign({}, DEFAULT_PROFILE, { instrument: P.instrument }); saveP(); renderLessons(); b.textContent = '✓ Cleared';
+};
+$('bHome').onclick = () => { const d = (history.state && history.state.depth) || 0; if (d > 0) history.go(-d); else { renderHome(); show('home', 'bStart'); } };
+$('bPause').onclick = () => togglePause();
+$('bRepeat').onclick = () => doAction('repeat');
+$('bNext').onclick = () => { if (L && !S.paused) nextEx(); };
+$('bRef').onclick = () => {
+  if (!L || S.paused) return; const u = L.r.ui || {}, degs = u.degs || [1];
+  if (u.hidden || S.hideNotes) pluck(degMidi(1), now() + 0.05, 1.2, 0.45);         // ear training: only give home
+  else pluck(degMidi(degs[Math.max(0, u.active || 0)] || 1), now() + 0.05, 1.2, 0.5);
+};
+$('bFing').onclick = () => { S.showFing = !S.showFing; render(); };
+$('bHide').onclick = () => { S.hideNotes = !S.hideNotes; render(); };
+
+/* arrow keys: nearest button in that direction (same as the other glasses apps) */
+document.addEventListener('keydown', e => {
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (!dir) return;
+  const scr = document.querySelector('.screen.active');
+  const els = scr ? [...scr.querySelectorAll('button')].filter(b => !b.disabled && b.offsetParent !== null) : [];
+  if (!els.length) return;
+  e.preventDefault();
+  const curEl = els.includes(document.activeElement) ? document.activeElement : null;
+  if (!curEl) { els[0].focus(); return; }
+  const r = curEl.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const cand = els.filter(b => b !== curEl).map(b => {
+    const q = b.getBoundingClientRect(), dx = q.left + q.width / 2 - cx, dy = q.top + q.height / 2 - cy;
+    const along = dx * dir[0] + dy * dir[1], perp = Math.abs(dx * dir[1] + dy * dir[0]);
+    return { b, along, perp, score: along + 4 * perp };
+  }).filter(c => c.along > 1);
+  const pool = cand.some(c => c.perp <= c.along) ? cand.filter(c => c.perp <= c.along) : cand;
+  pool.sort((a, b) => a.score - b.score);
+  if (pool[0]) { pool[0].b.focus(); pool[0].b.scrollIntoView({ block: 'nearest' }); }
+});
+
+let lock = null;
+async function keepAwake(on) { try { if (on && !lock && navigator.wakeLock) lock = await navigator.wakeLock.request('screen'); if (!on && lock) { await lock.release(); lock = null; } } catch (e) {} }
+
+/* ======================================================================
+   Voice commands through Meta AI (WebMCP). Everything also works by pinch.
+   ====================================================================== */
+(() => {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || !mc.registerTool) return;
+  const reply = text => ({ content: [{ type: 'text', text }] });
+  const none = { type: 'object', properties: {} };
+  const inLesson = () => !!(L && L.r);
+  const status = () => { if (!inLesson()) return 'No lesson is running.'; const u = L.r.ui || {}; return `Day ${L.lesson.day}, ${L.lesson.title}. Step ${L.i + 1} of ${L.exs.length}: ${u.phase || ''}. ${u.text || ''}`; };
+  const normKey = k => {
+    const s = String(k || '').trim().toLowerCase().replace(/\s*(major|minor)$/, '').replace(/\s*flat$/, 'b').replace(/\s*sharp$/, '#').replace('♭', 'b').replace('♯', '#');
+    const m = s.match(/^([a-g])([b#]?)$/); if (!m) return null;
+    const pc = PCS[m[1].toUpperCase() + m[2]]; return pc == null ? null : KEY_LIST[pc];
+  };
+  const tools = [
+    { name: 'start_lesson', description: "Musical Intuition: start today's music lesson. Optional instrument: guitar, sax or both.", inputSchema: { type: 'object', properties: { instrument: { type: 'string', enum: ['guitar', 'sax', 'both'] } } },
+      execute: async ({ instrument } = {}) => { if (instrument) { P.instrument = instrument; saveP(); } startLesson(P.current); return reply(`Starting Day ${L.lesson.day}: ${L.lesson.title}, on ${P.instrument}.`); } },
+    { name: 'set_instrument', description: 'Musical Intuition: choose guitar mode, saxophone mode or both instruments.', inputSchema: { type: 'object', properties: { instrument: { type: 'string', enum: ['guitar', 'sax', 'both'] } }, required: ['instrument'] },
+      execute: async ({ instrument }) => { P.instrument = instrument; saveP(); renderHome(); return reply(`${instrument} mode.${inLesson() ? ' It applies from the next lesson.' : ''}`); } },
+    { name: 'repeat_that', description: 'Musical Intuition: repeat the current exercise or phrase.', inputSchema: none, execute: async () => { doAction('repeat'); return reply('Repeating.'); } },
+    { name: 'play_slower', description: 'Musical Intuition: play the exercise slower.', inputSchema: none,
+      execute: async () => { S.tempoMul = Math.max(0.5, S.tempoMul * 0.85); doAction('repeat'); return reply(`Slower: ${Math.round(tempo())} beats per minute.`); } },
+    { name: 'play_reference_note', description: 'Musical Intuition: play the reference (home) note.', inputSchema: none, execute: async () => { audio(); pluck(degMidi(1), now() + 0.05, 1.5, 0.5); return reply(`Home is ${noteName(1, 'guitar')} concert.`); } },
+    { name: 'show_fingering', description: 'Musical Intuition: show guitar or sax fingering for the current note.', inputSchema: none, execute: async () => { S.showFing = true; render(); return reply('Fingering shown.'); } },
+    { name: 'hide_notes', description: 'Musical Intuition: hide (or show again) all note names and numbers for ear training.', inputSchema: { type: 'object', properties: { hide: { type: 'boolean' } } },
+      execute: async ({ hide } = {}) => { S.hideNotes = hide == null ? true : !!hide; render(); return reply(S.hideNotes ? 'Notes hidden. Use your ears.' : 'Notes shown.'); } },
+    { name: 'give_hint', description: 'Musical Intuition: give a hint for the current exercise.', inputSchema: none, execute: async () => { doAction('hint'); return reply('Here is a hint.'); } },
+    { name: 'change_key', description: 'Musical Intuition: change the concert key, e.g. G, B flat, F sharp. Say "lesson key" to go back to the lesson default.', inputSchema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
+      execute: async ({ key }) => {
+        if (/lesson|default/i.test(key)) P.key = ''; else { const k = normKey(key); if (!k) return reply(`I don't know the key "${key}".`); P.key = k; }
+        saveP(); renderHome(); if (inLesson()) doAction('repeat');
+        return reply(`Concert key ${pretty(concertKey())}. On tenor sax that's written ${pretty(SAX_KEY[concertKey()])}.`);
+      } },
+    { name: 'start_backing_track', description: 'Musical Intuition: start the drone or backing track.', inputSchema: none,
+      execute: async () => { if (inLesson() && L.ex.backing === 'vamp') backingStart(tempo()); else droneOn(); return reply('Playing.'); } },
+    { name: 'stop_backing_track', description: 'Musical Intuition: stop the drone or backing track.', inputSchema: none, execute: async () => { droneOff(); backingStop(); return reply('Stopped.'); } },
+    { name: 'next_exercise', description: 'Musical Intuition: skip to the next exercise.', inputSchema: none, execute: async () => { if (!inLesson()) return reply('No lesson is running.'); nextEx(); return reply(status()); } },
+    { name: 'pause_lesson', description: 'Musical Intuition: pause the lesson.', inputSchema: none, execute: async () => { togglePause(true); return reply('Paused.'); } },
+    { name: 'resume_lesson', description: 'Musical Intuition: resume the lesson.', inputSchema: none, execute: async () => { if (!L) return reply('No lesson to resume.'); show('lesson', 'bNext'); togglePause(false); return reply('Resumed.'); } },
+    { name: 'finish_lesson', description: "Musical Intuition: finish today's lesson now and save it.", inputSchema: none, execute: async () => { if (!inLesson()) return reply('No lesson is running.'); finishLesson({}); return reply('Saved. Nice practice.'); } },
+    { name: 'lesson_status', description: 'Musical Intuition: say where I am in the lesson and what to do.', inputSchema: none, execute: async () => reply(status()) },
+    { name: 'save_reflection', description: 'Musical Intuition: save a spoken note about how practice went.', inputSchema: { type: 'object', properties: { note: { type: 'string' } }, required: ['note'] },
+      execute: async ({ note }) => { P.reflections.push({ date: todayISO(), id: L ? L.lesson.lesson_id : P.current, note: String(note).slice(0, 500) }); saveP(); return reply('Saved your note.'); } },
+    { name: 'record_my_playing', description: 'Musical Intuition: record my playing.', inputSchema: none,
+      execute: async () => reply("Glasses web apps can't use the microphone yet, so I can't record. Your phone's voice recorder works for now.") },
+  ];
+  for (const t of tools) { try { mc.registerTool(t); } catch (e) {} }
+})();
+
+/* offline: cache the app after the first visit */
+if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js'); } catch (e) {} }
+
+history.replaceState({ screen: 'home', depth: 0 }, '');
+renderHome();
+setTimeout(() => $('bStart').focus(), 0);
+</script>
+</body>
+</html>
