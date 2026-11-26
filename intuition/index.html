@@ -61,6 +61,8 @@
   .seq.playing .deg { opacity: .45; }
   .deg.on, .seq.single .deg { opacity: 1; }
   .deg.on b { color: var(--focus); }
+  .deg b .oc { font-style: normal; font-size: .38em; vertical-align: middle; color: var(--dim); }
+  .wk { color: var(--accent); font-size: calc(var(--u) * 3.6); font-weight: 800; letter-spacing: .05em; margin-top: calc(var(--u) * 1.2); }
   .deg b { font-size: calc(var(--u) * 14); line-height: 1; font-weight: 900; }
   .seq.single .deg b { font-size: calc(var(--u) * 20); }
   .stage { overflow: hidden; }
@@ -195,6 +197,8 @@ function spell(key, d) {
   return LETTERS[li] + ACC[acc];
 }
 const noteName = (d, inst) => spell(keyFor(inst), d);
+// 1–7 as numbers; ▾ = below home, ▴ = above (degree 0 is 7 below, 8 is home an octave up)
+const degLabel = d => { const b = ((d - 1) % 7 + 7) % 7 + 1; return d < 1 ? `${b}<i class="oc">▾</i>` : d > 7 ? `${b}<i class="oc">▴</i>` : String(b); };
 const tonicMidi = () => 48 + PCS[concertKey()];          // concert C3..B3: inside both guitar and tenor sax range
 const degMidi = d => tonicMidi() + degSemis(d);
 
@@ -340,14 +344,15 @@ const F = () => (P.minutes || 30) / 30;                                    // se
 const scaleSec = s => Math.max(20, Math.round((s || 60) * F()));
 const scaleN = n => Math.max(1, Math.round((n || 1) * F()));
 const tempo = () => (L ? L.lesson.tempo_bpm || 65 : 65) * S.tempoMul;
-const PLAYING = ['warmup', 'find_note', 'rhythm_echo', 'listen_sing_play', 'random_note_recognition', 'free_improvisation'];
+const PLAYING = ['warmup', 'find_note', 'rhythm_echo', 'question_answer', 'play_rest', 'listen_sing_play', 'random_note_recognition', 'free_improvisation'];
 function instFor(ex, el, dur) {
   if (ex._split) return el < dur / 2 ? 'guitar' : 'sax';
   return ex._inst || null;
 }
 function textFor(p, inst) { return (inst && p[inst]) || p.text || p.guitar || ''; }
 function fill(s, inst) {
-  return String(s || '').replace(/\{n(\d)\}/g, (m, d) => inst ? noteName(+d, inst) : `${noteName(+d, 'guitar')} (sax ${noteName(+d, 'sax')})`);
+  return String(s || '').replace(/\{n(\d)\}/g, (m, d) => inst ? noteName(+d, inst) : `${noteName(+d, 'guitar')} (sax ${noteName(+d, 'sax')})`)
+    .replace(/\{inst\}/g, inst === 'sax' ? 'sax' : inst === 'guitar' ? 'guitar' : 'your instrument');
 }
 
 function PromptRunner(ex) {
@@ -362,7 +367,7 @@ function PromptRunner(ex) {
     const el = t - r.t0; if (el >= dur) return true;
     let x = el % cycle, k = 0; while (x >= lens[k]) { x -= lens[k]; k++; }
     const inst = instFor(ex, el, dur), p = prompts[k];
-    if (k !== r.idx) { r.idx = k; if (p.play) playDegs(p.play, t + 0.05); cue(fill(textFor(p, inst), inst)); }
+    if (k !== r.idx) { r.idx = k; if (p.play) playAny(p.play, t + 0.05); cue(fill(textFor(p, inst), inst)); }
     let text = fill(textFor(p, inst), inst);
     if (ex._split && el >= dur / 2 && el < dur / 2 + 8) text = 'Switch to tenor sax 🎷 — same idea, new instrument.';
     if (ex._split && inst !== r.lastInst) { if (r.lastInst) cue('Switch to sax'); r.lastInst = inst; }
@@ -374,66 +379,170 @@ function PromptRunner(ex) {
   return r;
 }
 
-function RhythmRunner(ex) {
-  const r = { ui: {} }, pats = ex.patterns || [[1, 1, 1, 1]], reps = scaleN(ex.repetitions || 2), deg = ex.degree || 1;
-  const rounds = []; pats.forEach(p => { for (let k = 0; k < reps; k++) rounds.push(p); });
-  function schedRound(i) {
-    const spb = r.spb, s = r.t0 + 4 * spb + i * 8 * spb;
-    for (let b = 0; b < 8; b++) click(s + b * spb, b % 4 === 0);
-    let pos = 0; rounds[i].forEach(d => { if (d > 0) pluck(degMidi(deg), s + pos * spb, Math.max(0.15, d * spb * 0.92), 0.5); pos += Math.abs(d); });
+/* Phrase helpers. An item is { degs: [...], durs: [beats...] }.
+   Degree 0 = 7 below home, -1 = 6 below home, 8 = home an octave up (degSemis handles any octave). */
+const asItem = x => Array.isArray(x) ? { degs: x, durs: x.map(() => 1) } : x;
+function genDurs(n, total) {
+  const opts = [0.5, 1, 1, 1, 1.5, 2], durs = [];
+  if (!total) { for (let k = 0; k < n; k++) durs.push(opts[Math.floor(Math.random() * opts.length)]); return durs; }
+  let rem = total;
+  for (let k = 0; k < n; k++) {
+    const maxD = rem - (n - 1 - k) * 0.5, ok = opts.filter(d => d <= maxD);
+    let d = ok.length ? ok[Math.floor(Math.random() * ok.length)] : 0.5;
+    if (k === n - 1) d = Math.min(2, rem);
+    durs.push(d); rem -= d;
   }
+  return durs;
+}
+// A melodic walk through the allowed degrees: small leaps, optional repeated notes, optional ending on home.
+function genPhrase(spec, n) {
+  const pool = (spec.degrees || [1, 2, 3, 4, 5, 6, 7]).slice().sort((a, b) => a - b), len = n || spec.length || 3, leap = spec.max_leap || 4;
+  let degs, tries = 0;
+  do {
+    degs = []; let cur = pool.includes(1) && Math.random() < 0.5 ? 1 : pool[Math.floor(Math.random() * pool.length)];
+    for (let k = 0; k < len; k++) {
+      if (k > 0) { const near = pool.filter(d => Math.abs(d - cur) <= leap && (spec.repeat_notes || d !== cur)); if (near.length) cur = near[Math.floor(Math.random() * near.length)]; }
+      degs.push(cur);
+    }
+    if (spec.end_home && len > 1) { const p = degs[len - 2]; degs[len - 1] = pool.includes(8) && Math.abs(p - 8) < Math.abs(p - 1) ? 8 : 1; }
+    tries++;
+  } while (tries < 20 && (degs.join() === spec._prev || (len > 2 && new Set(degs).size < 2)));   // no repeats of the last phrase, no one-note phrases
+  spec._prev = degs.join();
+  return { degs, durs: spec.rhythmic ? genDurs(len, spec.beats) : degs.map(() => 1) };
+}
+const melody = name => (L && L.vars && L.vars[name]) || { degs: [1], durs: [1] };
+function playItem(item, t, spb, vol = 0.5) {
+  let off = 0; item.degs.forEach((d, i) => { const b = item.durs[i] || 1; pluck(degMidi(d), t + off * spb, Math.max(0.15, b * spb * 0.92), vol); off += b; });
+  return off * spb;
+}
+const playAny = (what, t) => typeof what === 'string' ? playItem(melody(what), t, 60 / tempo()) : playDegs(what, t);
+function playText(ex, inst) {
+  if (P.instrument !== 'both' && ex.play_text_single) return fill(ex.play_text_single, inst);
+  if (ex.play_text) return fill(ex.play_text, inst);
+  return inst ? `Now play it on ${inst === 'sax' ? 'sax' : 'guitar'}.` : 'Now play it.';
+}
+
+/* Call and response, locked to a beat. Three modes:
+   echo      (rhythm_echo)     one bar: app plays a rhythm on one degree, you echo it
+   answer    (question_answer) two bars: app asks a melodic question, you answer for two bars; questions grow over time
+   alternate (play_rest)       you play N bars, rest N bars — no app phrase, just the band
+   With backing: 'vamp' the band keeps time (count-in from the band), otherwise drone + clicks. */
+function CallResponseRunner(ex) {
+  const r = { ui: {} }, mode = ex.mode || (ex.type === 'rhythm_echo' ? 'echo' : ex.type === 'play_rest' ? 'alternate' : 'answer');
+  const bars = ex.bars || (mode === 'echo' ? 1 : 2), deg = ex.degree || 1, vamp = ex.backing === 'vamp';
+  let rounds = [];
   r.begin = () => {
-    newBus(); backingStop(); if (ex.drone) droneOn(ex.drone_level || 0.1); else droneOff();
-    r.spb = 60 / tempo(); r.t0 = now() + 0.15; r.sched = -1; r.dur = 4 * r.spb + rounds.length * 8 * r.spb;
-    for (let b = 0; b < 4; b++) click(r.t0 + b * r.spb, b === 0);
+    newBus(); r.spb = 60 / tempo(); r.roundLen = 2 * bars * 4 * r.spb;
+    if (mode === 'echo') { rounds = []; (ex.patterns || [[1, 1, 1, 1]]).forEach(p => { for (let k = 0; k < scaleN(ex.repetitions || 2); k++) rounds.push({ degs: p.filter(d => d > 0).map(() => deg), pat: p }); }); }
+    else rounds = Array(Math.max(2, Math.floor(scaleSec(ex.duration_seconds || 300) / r.roundLen))).fill(null);
+    if (vamp) { droneOff(); backingStart(tempo()); r.t0 = A.backing.start - 4 * r.spb; }
+    else { backingStop(); if (ex.drone !== false) droneOn(ex.drone_level || 0.1); else droneOff(); r.t0 = now() + 0.15; for (let b = 0; b < 4; b++) click(r.t0 + b * r.spb, b === 0); }
+    r.sched = -1; r.dur = 4 * r.spb + rounds.length * r.roundLen;
   };
+  function makeRound(i) {
+    if (rounds[i]) return rounds[i];
+    if (mode === 'alternate') return (rounds[i] = { degs: [], pat: [-bars * 4] });
+    const f = i / Math.max(1, rounds.length - 1), pool = (ex.degrees || [1, 2, 3, 4, 5, 6, 7]).slice().sort((a, b) => a - b);
+    const use = pool.slice(0, Math.max(3, Math.round(pool.length * (0.5 + f / 2))));     // more notes as it goes
+    const item = genPhrase({ degrees: use, rhythmic: true, beats: bars * 4 - 1, max_leap: 3, repeat_notes: true }, Math.round(3 + f * 3));
+    const pat = item.durs.slice(), used = pat.reduce((a, b) => a + b, 0);
+    if (bars * 4 - used > 0) pat.push(-(bars * 4 - used));
+    return (rounds[i] = { degs: item.degs, pat });
+  }
+  function schedRound(i) {
+    const spb = r.spb, s = r.t0 + 4 * spb + i * r.roundLen, rd = makeRound(i);
+    if (!vamp) for (let b = 0; b < 2 * bars * 4; b++) click(s + b * spb, b % 4 === 0);
+    let pos = 0, k = 0;
+    rd.pat.forEach(d => { if (d > 0) pluck(degMidi(rd.degs[k++]), s + pos * spb, Math.max(0.15, d * spb * 0.92), 0.5); pos += Math.abs(d); });
+  }
   r.update = t => {
     const el = t - r.t0, spb = r.spb, inst = instFor(ex, 0, 1);
     if (el >= r.dur) return true;
-    const ri = el < 4 * spb ? -1 : Math.floor((el - 4 * spb) / (8 * spb));
-    const nextStart = r.t0 + 4 * spb + (r.sched + 1) * 8 * spb;
-    if (r.sched + 1 < rounds.length && t >= nextStart - 0.4) { r.sched++; schedRound(r.sched); }
-    let phase = 'LISTEN', text = 'Get ready…', rhythm = null, beat = { n: 4, i: Math.max(0, Math.floor(el / spb)) % 4 };
+    if (r.sched + 1 < rounds.length && t >= r.t0 + 4 * spb + (r.sched + 1) * r.roundLen - 0.4) { r.sched++; schedRound(r.sched); }
+    const ri = el < 4 * spb ? -1 : Math.floor((el - 4 * spb) / r.roundLen);
+    let phase = 'LISTEN', text = vamp ? 'The band counts you in…' : 'Get ready…', rhythm = null, degs = mode === 'echo' ? [deg] : (ex.degrees || null), active = -1;
     if (ri >= 0) {
-      const inRound = el - 4 * spb - ri * 8 * spb, call = inRound < 4 * spb, posBeats = (inRound / spb) % 4;
-      phase = call ? 'LISTEN' : 'PLAY';
-      text = call ? 'Listen to the rhythm…' : `Your turn — echo it on ${inst ? noteName(deg, inst) : 'home'}.`;
-      rhythm = { pattern: rounds[ri], pos: posBeats / 4, key: ri };
+      const rd = makeRound(ri), inR = el - 4 * spb - ri * r.roundLen, first = inR < bars * 4 * spb, pb = (inR / spb) % (bars * 4);
+      if (mode === 'alternate') {
+        phase = first ? 'PLAY' : 'REST';
+        text = (first ? `Play — ${bars} bars.` : 'Rest. Let the silence speak.') + ` Bar ${Math.floor(pb / 4) + 1} of ${bars}`;
+      } else if (mode === 'echo') {
+        phase = first ? 'LISTEN' : 'PLAY';
+        text = first ? 'Listen to the rhythm…' : `Your turn — echo it on ${inst ? noteName(deg, inst) : 'home'}.`;
+        rhythm = { pattern: rd.pat, pos: pb / 4, key: ri };
+      } else {
+        phase = first ? 'LISTEN' : 'PLAY'; degs = rd.degs;
+        text = first ? 'The question…' : 'Your answer. Two bars, your own idea. Land on home.';
+        rhythm = { pattern: rd.pat, pos: pb / (bars * 4), key: ri };
+        if (first) { let off = pb; for (let i = 0, k = 0; i < rd.pat.length; i++) { const d = rd.pat[i]; if (off < Math.abs(d)) { if (d > 0) active = k; break; } off -= Math.abs(d); if (d > 0) k++; } }
+      }
     }
-    r.ui = { phase, inst, text, degs: [deg], remain: r.dur - el, total: r.dur, beat, rhythm, item: ri >= 0 ? `${ri + 1} of ${rounds.length}` : '' };
+    r.ui = { phase, inst, text, degs, active, hidden: !!ex.hide_degrees && mode === 'answer', remain: r.dur - el, total: r.dur,
+      beat: { n: 4, i: Math.max(0, Math.floor(el / spb)) % 4 }, rhythm, item: ri >= 0 ? `${ri + 1} of ${rounds.length}` : '' };
     return false;
   };
   r.action = a => { if (a === 'repeat' || a === 'hint') r.begin(); };
   return r;
 }
 
+/* Listen → sing → play, one phrase at a time, then Got it / Again.
+   Phrases come from ex.phrases (fixed), ex.melody (a lesson melody, see lessons.js "melodies") or ex.random (generated).
+   Random phrases adapt: three first-try successes add a note; two Agains on one phrase take a note away.
+   mode 'imagine': read the numbers and imagine first, sing, then hear it and compare, then play.
+   fade_hints: first third shows everything, middle third only the first note, last third nothing until you check. */
 function PhraseRunner(ex) {
-  const r = { ui: {} }, phrases = ex.phrases || [ex.phrase || [1]], reps = scaleN(ex.repetitions || 3);
-  const items = []; phrases.forEach(ph => { for (let k = 0; k < reps; k++) items.push(ph); });
-  let it = 0;
+  const r = { ui: {} }, reps = scaleN(ex.repetitions || 1), rnd = ex.random ? Object.assign({}, ex.random) : null, imagine = ex.mode === 'imagine';
+  const items = [];
+  if (rnd) { for (let k = 0; k < scaleN(rnd.count || 8); k++) items.push(null); }
+  else { const src = ex.melody ? [melody(ex.melody)] : (ex.phrases || [ex.phrase || [1]]).map(asItem); src.forEach(x => { for (let k = 0; k < reps; k++) items.push(x); }); }
+  let it = 0, len = rnd ? (rnd.length || 3) : 0, streak = 0, tries = 0;
+  const minL = rnd ? (rnd.min_length || Math.max(1, len - 1)) : 0, maxL = rnd ? (rnd.max_length || len + 1) : 0;
+  const itemAt = () => items[it] || (items[it] = genPhrase(rnd, len));
   function startItem() {
-    newBus(); const spb = 60 / tempo(), ph = items[it], s0 = now() + 0.15, call = s0 + 2 * spb;
-    pluck(degMidi(1), s0, spb * 0.9, 0.3);            // home reference
-    ph.forEach((d, i) => pluck(degMidi(d), call + i * spb, spb * 0.9));
-    const resp = ex.response_seconds || Math.max(4, ph.length * spb + 2), callEnd = call + ph.length * spb + 0.4;
-    r.seg = { s0, call, callEnd, singEnd: callEnd + resp, playEnd: callEnd + 2 * resp, spb, ph };
+    newBus(); const spb = 60 / tempo(), item = itemAt(), n = item.degs.length;
+    const beats = item.durs.reduce((a, b) => a + b, 0), resp = ex.response_seconds || Math.max(4, beats * spb + 2);
+    let t = now() + 0.15; const st = [];
+    const add = (name, l) => { st.push({ name, end: t + l }); t += l; };
+    const t0 = t; pluck(degMidi(1), t, spb * 0.9, 0.3); add('home', 2 * spb);
+    if (imagine) { add('imagine', ex.imagine_seconds || Math.max(5, n * 1.6)); add('sing', resp); }
+    const callAt = t; playItem(item, callAt, spb); add('call', beats * spb + 0.4);
+    if (!imagine && !ex.no_sing) add('sing', resp);
+    add('play', resp);
+    Object.assign(r, { st, item, spb, callAt, t0, end: t });
+  }
+  function mask(stage) {
+    const n = r.item.degs.length;
+    if (stage === 'check' || imagine) return null;
+    if (ex.hide_answer) return Array(n).fill(true);
+    if (ex.fade_hints) { const f = it / Math.max(1, items.length); if (f >= 2 / 3) return Array(n).fill(true); if (f >= 1 / 3) return r.item.degs.map((_, i) => i > 0); }
+    return null;
   }
   r.begin = () => { backingStop(); if (ex.drone) droneOn(ex.drone_level || 0.1); else droneOff(); it = 0; startItem(); };
   r.update = t => {
-    const s = r.seg, inst = instFor(ex, 0, 1); let phase, text, active = -1, wait = false;
-    if (t < s.call) { phase = 'LISTEN'; text = 'Home note…'; }
-    else if (t < s.callEnd) { phase = 'LISTEN'; text = 'Listen…'; active = Math.min(s.ph.length - 1, Math.floor((t - s.call) / s.spb)); }
-    else if (t < s.singEnd) { phase = 'SING'; text = 'Sing it back.'; }
-    else if (t < s.playEnd) { phase = 'PLAY'; text = inst ? `Now play it on ${inst === 'sax' ? 'sax' : 'guitar'}.` : 'Now play it.'; }
-    else { phase = 'CHECK'; text = 'How did that go?'; wait = true; }
-    r.ui = { phase, inst, text, degs: s.ph, active, hidden: !!ex.hide_answer && !wait, remain: wait ? null : s.playEnd - t, total: s.playEnd - s.s0,
-      ctx: wait ? [['got', '✓ Got it'], ['again', '↻ Again']] : null, item: `${it + 1} of ${items.length}` };
+    const inst = instFor(ex, 0, 1), cur = r.st.find(s => t < s.end), stage = cur ? cur.name : 'check';
+    let active = -1;
+    if (stage === 'call') { let off = (t - r.callAt) / r.spb; for (let i = 0; i < r.item.durs.length; i++) { if (off < r.item.durs[i]) { active = i; break; } off -= r.item.durs[i]; } }
+    const T = {
+      home: ['LISTEN', 'Home note…'],
+      imagine: ['IMAGINE', "Read it. Hear it in your head. Don't sing yet."],
+      sing: ['SING', imagine ? 'Sing what you imagined.' : 'Sing it back.'],
+      call: ['LISTEN', imagine ? 'Now listen. Did it match?' : 'Listen…'],
+      play: ['PLAY', playText(ex, inst)],
+      check: ['CHECK', imagine ? 'Did your imagined version match?' : 'How did that go?'],
+    }[stage];
+    r.ui = { phase: T[0], inst, text: T[1], degs: r.item.degs, active, mask: mask(stage), remain: stage === 'check' ? null : r.end - t, total: r.end - r.t0,
+      ctx: stage === 'check' ? [['got', imagine ? '✓ It matched' : '✓ Got it'], ['again', '↻ Again']] : null, item: `${it + 1} of ${items.length}` };
     return false;
   };
   r.action = a => {
-    if (a === 'got') { it++; if (it >= items.length) return 'next'; startItem(); }
-    else if (a === 'again' || a === 'repeat') startItem();
-    else if (a === 'hint') { S.tempoMul = Math.max(0.5, S.tempoMul * 0.85); startItem(); }
+    if (a === 'got') {
+      if (rnd) { streak = tries === 0 ? streak + 1 : 0; if (streak >= 3 && len < maxL) { len++; streak = 0; } }
+      it++; tries = 0; if (it >= items.length) return 'next'; startItem();
+    } else if (a === 'again' || a === 'repeat') {
+      if (a === 'again') tries++;
+      if (rnd && tries >= 2 && len > minL) { len--; streak = 0; tries = 0; items[it] = null; }   // struggling: try a shorter phrase
+      startItem();
+    } else if (a === 'hint') { S.tempoMul = Math.max(0.5, S.tempoMul * 0.85); startItem(); }
   };
   return r;
 }
@@ -499,7 +608,7 @@ function ReflectRunner() {
 }
 
 const RUNNERS = { warmup: PromptRunner, drone_listening: PromptRunner, find_note: PromptRunner, free_improvisation: PromptRunner,
-  rhythm_echo: RhythmRunner, listen_sing_play: PhraseRunner, random_note_recognition: RecogRunner, reflection: ReflectRunner };
+  rhythm_echo: CallResponseRunner, question_answer: CallResponseRunner, play_rest: CallResponseRunner, listen_sing_play: PhraseRunner, random_note_recognition: RecogRunner, reflection: ReflectRunner };
 
 /* ======================================================================
    Lesson flow
@@ -514,10 +623,13 @@ function startLesson(id, replace) {
     if (P.instrument === 'both') {
       if (e.type === 'warmup' || e.type === 'free_improvisation') e._split = true;   // half guitar, half sax
       else if (plays) e._inst = flip++ % 2 ? 'sax' : 'guitar';                        // alternate between exercises
+      if (e.inst) e._inst = e.inst;                                                 // e.g. Day 15: learn on guitar, then carry it to sax
     } else e._inst = P.instrument;
     return e;
   });
-  L = { lesson, exs, i: -1, ac0: now(), ctxKey: '?' };   // '?' forces the answer buttons to redraw
+  const vars = {};                                                                   // lesson melodies, made fresh each run
+  Object.entries(lesson.melodies || {}).forEach(([k, sp]) => { vars[k] = genPhrase(Object.assign({}, sp)); });
+  L = { lesson, exs, i: -1, ac0: now(), ctxKey: '?', vars };   // '?' forces the answer buttons to redraw
   keepAwake(true);
   if (replace) { history.replaceState({ screen: 'lesson', depth: (history.state && history.state.depth) || 1 }, ''); show('lesson', 'bNext'); }
   else go('lesson', 'bNext');
@@ -583,17 +695,18 @@ function render() {
   // scale degrees + note names
   const seq = $('lSeq'), degs = u.degs || [];
   const hide = S.hideNotes || u.hidden;
-  const sk = JSON.stringify([degs, u.active, hide, u.inst, concertKey(), P.instrument]);
+  const sk = JSON.stringify([degs, u.active, hide, u.mask, u.inst, concertKey(), P.instrument]);
   if (sk !== seq.dataset.k) {
     seq.dataset.k = sk;
     seq.className = 'seq' + (degs.length === 1 ? ' single' : degs.length > 4 ? ' many' : '') + (u.active >= 0 ? ' playing' : '');
     seq.innerHTML = degs.map((d, i) => {
-      const nm = u.inst ? noteName(d, u.inst) : (P.instrument === 'both' ? `🎸${noteName(d, 'guitar')} 🎷${noteName(d, 'sax')}` : noteName(d, P.instrument));
-      return `<div class="deg${i === u.active ? ' on' : ''}"><b>${hide ? '?' : d}</b><small>${hide ? '&nbsp;' : esc(nm)}</small></div>`;
+      const nm = u.inst ? noteName(d, u.inst) : (P.instrument === 'both' ? (degs.length > 3 ? `${noteName(d, 'guitar')}/${noteName(d, 'sax')}` : `🎸${noteName(d, 'guitar')} 🎷${noteName(d, 'sax')}`) : noteName(d, P.instrument));
+      const h = hide || (u.mask && u.mask[i]);
+      return `<div class="deg${i === u.active ? ' on' : ''}"><b>${h ? '?' : degLabel(d)}</b><small>${h ? '&nbsp;' : esc(nm)}</small></div>`;
     }).join('');
   }
   // fingering
-  const fd = degs.length ? degs[u.active > 0 ? u.active : 0] : null, wantF = (S.showFing || u.fingAuto) && fd && !hide;
+  const fi = u.active > 0 ? u.active : 0, fd = degs.length ? degs[fi] : null, wantF = (S.showFing || u.fingAuto) && fd != null && !hide && !(u.mask && u.mask[fi]);
   $('lFing').classList.toggle('hidden', !wantF);
   $('lStage').classList.toggle('compact', !!(wantF || u.rhythm));
   if (wantF) {
@@ -606,7 +719,8 @@ function render() {
   if (u.rhythm) {
     if (rh.dataset.k !== String(u.rhythm.key)) {
       rh.dataset.k = u.rhythm.key; let pos = 0;
-      rh.innerHTML = u.rhythm.pattern.map(d => { const a = Math.abs(d), h = `<div class="${d > 0 ? 'n' : 'r'}" style="left:${pos / 4 * 100}%;width:calc(${a / 4 * 100}% - 1.2vmin)"></div>`; pos += a; return h; }).join('') + '<div class="ph" id="lPh"></div>';
+      const tot = u.rhythm.pattern.reduce((x, y) => x + Math.abs(y), 0) || 4;
+      rh.innerHTML = u.rhythm.pattern.map(d => { const a = Math.abs(d), h = `<div class="${d > 0 ? 'n' : 'r'}" style="left:${pos / tot * 100}%;width:calc(${a / tot * 100}% - 1.2vmin)"></div>`; pos += a; return h; }).join('') + '<div class="ph" id="lPh"></div>';
     }
     $('lPh').style.left = (u.rhythm.pos * 100) + '%';
   }
@@ -651,8 +765,9 @@ function renderHome() {
   $('bStart').textContent = L ? `▶ Resume Day ${L.lesson.day}` : "▶ Start today's lesson";
 }
 function renderLessons() {
-  $('lList').innerHTML = LESSONS.map(l => `<button data-id="${l.lesson_id}" class="${l.lesson_id === P.current ? 'sel' : ''}">W${l.week} · Day ${l.day} · ${esc(l.title)}${P.done[l.lesson_id] ? ' ✓' + P.done[l.lesson_id] : ''}<small>${esc(l.objective)}</small></button>`).join('')
-    + `<div class="stats">Weeks 2–12 arrive as new lessons in lessons.js.</div>`;
+  let wkNo = 0;
+  $('lList').innerHTML = LESSONS.map(l => (l.week !== wkNo ? `<div class="wk">WEEK ${(wkNo = l.week)} · ${esc((window.WEEKS || {})[l.week] || '')}</div>` : '') + `<button data-id="${l.lesson_id}" class="${l.lesson_id === P.current ? 'sel' : ''}">W${l.week} · Day ${l.day} · ${esc(l.title)}${P.done[l.lesson_id] ? ' ✓' + P.done[l.lesson_id] : ''}<small>${esc(l.objective)}</small></button>`).join('')
+    + `<div class="stats">More weeks arrive as new lessons in lessons.js.</div>`;
   $('lList').querySelectorAll('button').forEach(b => b.onclick = () => { P.current = b.dataset.id; saveP(); startLesson(P.current, true); });
   const wk = Date.now() - 7 * 864e5, recent = P.history.filter(h => new Date(h.date + 'T12:00').getTime() >= wk);
   const ear = Object.keys(P.ear).sort().map(d => { const [ok, n] = P.ear[d]; return `${d}: <b>${Math.round(100 * ok / n)}%</b>`; }).join(' · ');
