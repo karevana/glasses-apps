@@ -33,6 +33,7 @@
   .small { padding: calc(var(--u)*1.6) calc(var(--u)*2.6); font-size: calc(var(--u)*3.8); white-space: nowrap; }
   #songs { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: calc(var(--u)*1.6); padding: calc(var(--u)*1); scrollbar-width: none; }
   #songs::-webkit-scrollbar { display: none; }
+  .song.last { border-left: calc(var(--u)*1.4) solid #2ee6b8; }
   .song { text-align: left; padding: calc(var(--u)*2.6) calc(var(--u)*3.2); font-size: calc(var(--u)*5); font-weight: 600; flex: 0 0 auto; }
 
   /* ---------- Player ---------- */
@@ -126,7 +127,7 @@
      left = back a line. Fully usable with swipe + pinch.
    ===================================================================== */
 const API = 'https://n8n.rainandwind.ca/webhook/glasses-songbook';
-const LS = { key: 'songbook.key', tilt: 'songbook.tilt', list: 'songbook.list', song: id => 'songbook.song.' + id, speed: id => 'songbook.speed.' + id };
+const LS = { key: 'songbook.key', tilt: 'songbook.tilt', list: 'songbook.list', song: id => 'songbook.song.' + id, speed: id => 'songbook.speed.' + id, last: 'songbook.last' };
 const $ = id => document.getElementById(id);
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -270,30 +271,46 @@ async function api(params) {
     return d;
   } finally { clearTimeout(t); }
 }
-function renderList(note) {
+function renderList(note, keepId) {
   const box = $('songs');
   if (!songList.length) {
     box.innerHTML = `<div class="center"><div class="msg">${esc(note || 'No songs yet.')}</div>
       <div class="dim">Add a Google Doc to Drive › Songbook, then pinch Refresh.</div></div>`;
     setTimeout(() => $('bRefresh').focus(), 0); return;
   }
+  const lastId = store.get(LS.last, null);   // the song played most recently (kept across reloads)
   box.innerHTML = (note ? `<div class="dim">${esc(note)}</div>` : '') +
-    songList.map((s, i) => `<button class="song" id="song${i}" data-i="${i}">${esc(s.title)}</button>`).join('');
+    songList.map((s, i) => `<button class="song${s.id === lastId ? ' last' : ''}" id="song${i}" data-i="${i}">${esc(s.title)}</button>`).join('');
   box.querySelectorAll('.song').forEach(b => b.addEventListener('click', () => openSong(songList[+b.dataset.i])));
-  const cur = P.song ? songList.findIndex(x => x.id === P.song.id) : -1;   // after a song, focus that song in the list
-  setTimeout(() => { const el = $('song' + (cur >= 0 ? cur : 0)); el.focus(); el.scrollIntoView({ block: 'nearest' }); }, 0);
+  let at = songList.findIndex(x => x.id === (keepId || lastId));
+  if (at < 0) at = 0;
+  focusSong(at);
+}
+// Put the highlight on one song and centre it, so you can swipe up or down from there.
+// The glasses can move focus after a screen change, so re-apply it a few times
+// (only while focus isn't already on a list song you've moved to).
+function focusSong(i) {
+  const go = () => {
+    const el = $('song' + i); if (!el || !$('list').classList.contains('active')) return;
+    const a = document.activeElement;
+    if (a && a.classList && a.classList.contains('song') && a !== el && go.done) return;
+    el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'center' }); go.done = true;
+  };
+  [0, 150, 450].forEach(ms => setTimeout(go, ms));
 }
 async function loadList() {
   if (!KEY()) { $('songs').innerHTML = `<div class="center"><div class="msg">This copy of Songbook has no key.</div><div class="dim">Add it on the glasses using the full address that ends in ?k=…</div></div>`; return; }
-  $('songs').innerHTML = `<div class="center"><div class="msg">Loading songs…</div></div>`;
-  try { const d = await api({}); songList = d.songs || []; store.set(LS.list, songList); renderList(); }
+  const a = document.activeElement, keepId = a && a.classList.contains('song') ? songList[+a.dataset.i].id : null;
+  if (!songList.length) $('songs').innerHTML = `<div class="center"><div class="msg">Loading songs…</div></div>`;
+  try { const d = await api({}); songList = d.songs || []; store.set(LS.list, songList); renderList('', keepId); }
   catch (e) { renderList(songList.length ? 'Offline: showing saved list.' : 'Could not reach the songbook. ' + (e.name === 'AbortError' ? 'It took too long.' : e.message)); }
 }
 $('bRefresh').addEventListener('click', loadList);
 // ☰ Songs: stop this song and go back to the list (same as the glasses' Back gesture)
+let quietPop = false;
 function backToList() {
-  if (history.state && history.state.screen === 'play') history.back();
-  else { stopSong(); show('list'); renderList(); }
+  tiltTest = false; stopSong(); show('list'); renderList();
+  if (history.state && history.state.screen === 'play') { quietPop = true; history.back(); }
 }
 
 /* =====================================================================
@@ -303,7 +320,7 @@ const P = { song: null, meta: null, units: [], idx: 0, state: 'idle', speed: 1, 
 
 async function openSong(s) {
   history.pushState({ screen: 'play' }, '');
-  P.song = s; $('pTitle').textContent = s.title; $('pInfo').textContent = '';
+  P.song = s; store.set(LS.last, s.id); $('pTitle').textContent = s.title; $('pInfo').textContent = '';
   $('lines').innerHTML = `<div class="end" style="padding-top:20vh">Loading…</div>`;
   show('play');
   let text = null, note = '';
@@ -564,7 +581,7 @@ $('bTilt').addEventListener('click', () => {
 $('bTiltGo').addEventListener('click', () => { if ($('bTiltGo').dataset.done) { tiltTest = false; history.back(); } else calibrate(); });
 
 /* ---------- Back button ---------- */
-window.addEventListener('popstate', () => { tiltTest = false; stopSong(); show('list'); renderList(); });
+window.addEventListener('popstate', () => { if (quietPop) { quietPop = false; return; } tiltTest = false; stopSong(); show('list'); renderList(); });
 
 /* =====================================================================
    Voice control (WebMCP). Optional; the app works without it.
