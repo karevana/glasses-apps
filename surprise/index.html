@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A surprise is waiting.">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>🎁 Surprise</title>
+<style>
+  /* Christmas Scavenger Hunt (spec by Sally, 2026-11-26).
+     Works on the Meta Ray-Ban Display glasses (600x600, black = see-through, pinch = Enter, swipe = arrows, voice via Meta AI)
+     and in a phone browser (tap the buttons). Clues come from Muse Test Log > Hunt via n8n (glasses-hunt); the
+     location column never reaches this page. Progress is kept on this device, so closing the app mid-hunt is fine.
+     Keys: Enter = Found it · ArrowRight = Hint · ArrowLeft = back one clue · double head-nod = Found it.
+     ?k=KEY (stored after first use) · ?hunt=HuntTabName (default Hunt) · ?test=1 = Karen's test run (separate progress). */
+  :root { --accent: #ff5a5a; --green: #3df5a0; --gold: #ffd84a; --text: #fff; --dim: #a9b2b8; --u: min(1vw, 1vh); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text); overflow: hidden;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-user-select: none; user-select: none; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; padding: calc(var(--u) * 4); gap: calc(var(--u) * 2.4); }
+  .screen.active { display: flex; }
+  button { font: inherit; color: inherit; background: #111; border: calc(var(--u) * .5) solid #333; border-radius: calc(var(--u) * 2.6);
+    padding: calc(var(--u) * 2.4) calc(var(--u) * 1.2); font-size: calc(var(--u) * 4.8); font-weight: 800; cursor: pointer; }
+  button.go { background: #0b2a1c; border-color: var(--green); }
+  button:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 calc(var(--u) * .6) var(--gold); }
+  .row { display: grid; gap: calc(var(--u) * 1.8); }
+  .r2 { grid-template-columns: 1fr 1fr; } .r3 { grid-template-columns: 1fr 1.2fr 1.6fr; }
+  .spacer { flex: 1; }
+  .hidden { display: none !important; }
+  .big { font-size: calc(var(--u) * 20); text-align: center; line-height: 1; }
+  .title { font-size: calc(var(--u) * 7.5); font-weight: 900; text-align: center; line-height: 1.15; }
+  .sub { font-size: calc(var(--u) * 4.2); color: var(--dim); text-align: center; line-height: 1.35; }
+  .test { position: absolute; top: 0; left: 0; right: 0; background: #3a2a00; color: var(--gold); text-align: center;
+    font-size: calc(var(--u) * 3.2); font-weight: 800; padding: calc(var(--u) * .6); letter-spacing: .05em; }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .step { font-size: calc(var(--u) * 4.4); color: var(--green); font-weight: 900; letter-spacing: .06em; }
+  .dots { display: flex; gap: calc(var(--u) * 1.2); }
+  .dots i { width: calc(var(--u) * 2.2); height: calc(var(--u) * 2.2); border-radius: 50%; background: #333; }
+  .dots i.done { background: var(--green); } .dots i.now { background: var(--gold); }
+  .clue { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+    font-weight: 800; line-height: 1.22; padding: 0 calc(var(--u) * 1); }
+  .hint { border-left: calc(var(--u) * .9) solid var(--gold); background: #1c1604; color: #ffe9a3; border-radius: 0 calc(var(--u) * 2) calc(var(--u) * 2) 0;
+    padding: calc(var(--u) * 1.6) calc(var(--u) * 2.4); font-size: calc(var(--u) * 4.6); line-height: 1.3; }
+  .nudge { color: var(--gold); font-size: calc(var(--u) * 3.8); text-align: center; }
+  .flash { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: calc(var(--u) * 10);
+    font-weight: 900; color: var(--green); background: rgba(0,0,0,.85); }
+  .final .clue { color: var(--gold); }
+  .small { font-size: calc(var(--u) * 3.4); color: var(--dim); text-align: center; }
+  #wNod { font-size: calc(var(--u) * 3.8); padding: calc(var(--u) * 1.4); }
+</style>
+</head>
+<body>
+<div class="test hidden" id="testBar">TEST RUN · Ramon's progress is safe</div>
+
+<!-- WELCOME -->
+<section id="welcome" class="screen active">
+  <div class="spacer"></div>
+  <div class="big">🎁</div>
+  <div class="title" id="wTitle">A hunt is waiting for you.</div>
+  <div class="sub" id="wSub">Follow the clues. When you find each spot, say “found it”, pinch, or nod twice.</div>
+  <div class="spacer"></div>
+  <div class="small" id="wNodHint">Nod twice to begin</div>
+  <div class="row r2" id="wRow"><button id="wStart" class="go">▶ Start</button><button id="wOver" class="hidden">⟲ Start over</button><button id="wNod">🙂 Nod: on</button></div>
+</section>
+
+<!-- CLUE -->
+<section id="clue" class="screen">
+  <div class="top"><div class="step" id="cStep">CLUE 1 OF 4</div><div class="dots" id="cDots"></div></div>
+  <div class="clue" id="cText"></div>
+  <div class="hint hidden" id="cHint"></div>
+  <div class="nudge hidden" id="cNudge">Getting warmer? Swipe right for a hint →</div>
+  <div class="row r3"><button id="cBack">↩ Back</button><button id="cHintBtn">💡 Hint</button><button id="cFound" class="go">✓ Found it</button></div>
+</section>
+
+<!-- FINAL -->
+<section id="final" class="screen final">
+  <div class="big">🎄</div>
+  <div class="clue" id="fText"></div>
+  <div class="row r2"><button id="fAgain">✨ Again</button><button id="fDone" class="go">Done</button></div>
+</section>
+
+<!-- MESSAGE -->
+<section id="msg" class="screen">
+  <div class="spacer"></div>
+  <div class="title" id="mTitle">Loading…</div>
+  <div class="sub" id="mBody"></div>
+  <div class="spacer"></div>
+  <button id="mRetry" class="go hidden">↻ Try again</button>
+</section>
+
+<div class="flash hidden" id="flash">✓ Found it!</div>
+
+<script>
+'use strict';
+const API = 'https://n8n.rainandwind.ca/webhook/glasses-hunt';
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+
+// key: from ?k= once, then remembered (never committed to the repo)
+if (qs.get('k')) store.set('hunt.key', qs.get('k'));
+const KEY = store.get('hunt.key', '');
+const TAB = (qs.get('hunt') || 'Hunt').trim();
+const TEST = qs.get('test') === '1';
+const PKEY = `hunt.${TEST ? 'test.' : ''}step.${TAB}`;          // progress: separate for Karen's test run
+if (TEST) { $('testBar').classList.remove('hidden'); document.querySelectorAll('.screen').forEach(x => x.style.paddingTop = 'calc(var(--u) * 7)'); }
+if (qs.get('k') || qs.get('test')) history.replaceState(null, '', location.pathname + (TAB !== 'Hunt' ? `?hunt=${encodeURIComponent(TAB)}` : '') + (TEST ? (TAB !== 'Hunt' ? '&' : '?') + 'test=1' : ''));
+
+let clues = store.get(`hunt.cache.${TAB}`, []), step = store.get(PKEY, 0), screen = 'welcome', shownAt = 0, hintOpen = false;
+const save = () => store.set(PKEY, step);
+
+/* ---------- loading the clues (fresh every time, cached copy if offline) ---------- */
+async function load() {
+  if (!KEY) return message('Almost ready', 'Open this hunt from its full address (the one with ?k= in it).');
+  for (const wait of [12000, 25000]) {
+    try {
+      const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), wait);
+      const r = await fetch(`${API}?k=${encodeURIComponent(KEY)}&hunt=${encodeURIComponent(TAB)}&t=${Date.now()}`, { cache: 'no-store', signal: ctl.signal });
+      clearTimeout(tm);
+      if (r.status === 403) return message('Key missing', 'Open this hunt from its full address (the one with ?k= in it).', true);
+      const d = await r.json();
+      if (!d.ok) return message('Not ready yet', d.error || 'The clues could not be read.', true);
+      clues = d.clues || []; store.set(`hunt.cache.${TAB}`, clues);
+      if (!clues.length) return message('No clues yet', `Add rows to the ${TAB} tab: step, clue, hint, location, is_final.`, true);
+      return welcome();
+    } catch (e) { /* retry once with a longer wait */ }
+  }
+  if (clues.length) return welcome();                       // offline: use the saved copy
+  message('No connection', 'Could not reach the clues. Check the connection and try again.', true);
+}
+function message(title, body, retry) { $('mTitle').textContent = title; $('mBody').textContent = body; $('mRetry').classList.toggle('hidden', !retry); show('msg', retry ? 'mRetry' : null); }
+
+/* ---------- screens ---------- */
+function show(id, focusId) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id)); screen = id; if (focusId) setTimeout(() => $(focusId) && $(focusId).focus(), 0); }
+function welcome() {
+  step = Math.min(step, Math.max(0, clues.length - 1));
+  const mid = step > 0;
+  $('wTitle').textContent = mid ? 'Your hunt is waiting where you left it.' : 'A hunt is waiting for you.';
+  $('wStart').textContent = mid ? `▶ Continue · clue ${step + 1}` : '▶ Start';
+  $('wOver').classList.toggle('hidden', !mid);
+  $('wRow').style.gridTemplateColumns = mid ? '1.5fr 1fr 1fr' : '1fr 1fr';
+  $('wNod').textContent = `🙂 Nod: ${nodOn() ? 'on' : 'off'}`;
+  $('wNodHint').textContent = nodOn() ? (nodAxis() ? 'Nod twice to begin' : 'Nod twice to begin — that also teaches the glasses your nod') : '';
+  show('welcome', 'wStart'); nod.armAt = Date.now() + 800;
+}
+function fit(el, max, min) {     // shrink the text until it fits the card, so nothing scrolls
+  let s = max; el.style.fontSize = `calc(var(--u) * ${s})`;
+  while (s > min && (el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2)) { s -= 0.5; el.style.fontSize = `calc(var(--u) * ${s})`; }
+}
+function showClue() {
+  const c = clues[step];
+  if (!c) return welcome();
+  if (c.is_final) return showFinal();
+  hintOpen = false; shownAt = Date.now();
+  $('cStep').textContent = `CLUE ${step + 1} OF ${clues.length}`;
+  $('cDots').innerHTML = clues.map((_, i) => `<i class="${i < step ? 'done' : i === step ? 'now' : ''}"></i>`).join('');
+  $('cHint').classList.add('hidden'); $('cNudge').classList.add('hidden');
+  $('cHintBtn').disabled = !c.hint; $('cBack').disabled = step === 0;
+  show('clue', 'cFound');
+  $('cText').textContent = c.clue; fit($('cText'), 9, 4.5);
+  nod.armAt = Date.now() + 1500;                 // grace period: no nod counts right after a new card
+}
+function hint() {
+  if (screen !== 'clue' || !clues[step] || !clues[step].hint) return;
+  hintOpen = true; $('cNudge').classList.add('hidden');
+  $('cHint').textContent = '💡 ' + clues[step].hint; $('cHint').classList.remove('hidden'); fit($('cText'), 9, 4);
+}
+function found(how) {
+  if (screen === 'welcome') return start();
+  if (screen !== 'clue') return;
+  flash(); step = Math.min(step + 1, clues.length - 1); save();
+  setTimeout(showClue, 650);
+}
+function back() { if (screen === 'clue' && step > 0) { step--; save(); showClue(); } }
+function start() {
+  if (!clues.length) return;
+  try { if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) DeviceOrientationEvent.requestPermission().catch(() => {}); } catch (e) {}   // iPhone: motion needs a tap to allow
+  if (step >= clues.length - 1 && clues[step] && clues[step].is_final && step > 0) step = 0; save(); unlockAudio(); showClue(); }
+function startOver() { step = 0; save(); welcome(); }
+function showFinal() {
+  show('final', 'fDone'); $('fText').textContent = clues[step].clue; fit($('fText'), 10, 5); fanfare();
+  nod.armAt = Infinity;
+}
+function done() { step = 0; save(); welcome(); }        // the hunt resets for next time
+function flash() { const f = $('flash'); f.classList.remove('hidden'); chime(); setTimeout(() => f.classList.add('hidden'), 600); }
+
+// "Getting warmer?" after 2 minutes on one clue (the hint itself still only on request)
+setInterval(() => { if (screen === 'clue' && !hintOpen && clues[step] && clues[step].hint && Date.now() - shownAt > 120000) $('cNudge').classList.remove('hidden'); }, 5000);
+
+/* ---------- sound: a little chime per clue, a fanfare at the end ---------- */
+let ac = null;
+function unlockAudio() { try { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch (e) {} }
+function tone(f, t, d, v, type) {
+  if (!ac) return; const o = ac.createOscillator(), g = ac.createGain(), lp = ac.createBiquadFilter();
+  o.type = type || 'triangle'; o.frequency.value = f; lp.type = 'lowpass'; lp.frequency.value = 3200;
+  o.connect(lp); lp.connect(g); g.connect(ac.destination);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  o.start(t); o.stop(t + d + 0.05);
+}
+function chime() { unlockAudio(); if (!ac) return; const t = ac.currentTime + 0.02; tone(1046.5, t, 0.35, 0.18); tone(1568, t + 0.09, 0.45, 0.14); }
+function fanfare() {
+  unlockAudio(); if (!ac) return; const t = ac.currentTime + 0.05, n = [523.25, 659.25, 783.99, 1046.5];
+  n.forEach((f, i) => tone(f, t + i * 0.16, 0.35, 0.22, 'sawtooth'));
+  [523.25, 659.25, 783.99, 1046.5].forEach(f => tone(f, t + 0.75, 1.6, 0.12, 'sawtooth'));
+  for (let i = 0; i < 10; i++) tone(1800 + Math.random() * 1600, t + 1 + i * 0.12, 0.25, 0.05, 'sine');
+}
+
+/* ---------- double head-nod = Found it ----------
+   Each orientation axis keeps a slow-moving baseline. A nod = a quick swing of at least 12° away from it that comes
+   back within 0.8 s; two nods within 1.6 s = "found it". Slow looking up/down at shelves doesn't count.
+   The first double nod on the welcome card shows which axis is the nod on these glasses; it's remembered. */
+const nodOn = () => store.get('hunt.nod', true), nodAxis = () => store.get('hunt.nodAxis', '');
+const nod = { armAt: 0, ax: {} };
+function axisState(k) { return nod.ax[k] || (nod.ax[k] = { base: null, out: false, outAt: 0, nods: [] }); }
+function unwrap(v, ref) { let d = v - ref; while (d > 180) d -= 360; while (d < -180) d += 360; return d; }
+window.addEventListener('deviceorientation', e => {
+  if (!nodOn()) return;
+  const now = Date.now(), vals = { beta: e.beta, gamma: e.gamma, alpha: e.alpha };
+  const axes = nodAxis() ? [nodAxis()] : ['beta', 'gamma'];       // until calibrated, watch both tilt axes (alpha is compass heading)
+  for (const k of axes) {
+    const v = vals[k]; if (v == null) continue;
+    const s = axisState(k);
+    if (s.base == null) { s.base = v; continue; }
+    const d = unwrap(v, s.base);
+    if (!s.out) {
+      s.base += d * 0.04;                                             // baseline follows slow posture changes
+      if (Math.abs(d) > 12) { s.out = true; s.outAt = now; }
+    } else if (Math.abs(d) < 6) {
+      s.out = false;
+      if (now - s.outAt < 800) {
+        s.nods = s.nods.filter(t => now - t < 1600); s.nods.push(now);
+        if (s.nods.length >= 2 && now > nod.armAt) {
+          s.nods = []; nod.armAt = now + 2000;
+          if (!nodAxis()) store.set('hunt.nodAxis', k);
+          found('nod');
+        }
+      }
+    } else if (now - s.outAt > 1500) { s.out = false; s.base = v; }   // a long look away isn't a nod: re-centre
+  }
+});
+
+/* ---------- buttons and keys ---------- */
+$('wStart').onclick = start;
+$('wOver').onclick = startOver;
+$('wNod').onclick = () => { store.set('hunt.nod', !nodOn()); welcome(); };
+$('cFound').onclick = () => found('tap');
+$('cHintBtn').onclick = hint;
+$('cBack').onclick = back;
+$('fAgain').onclick = fanfare;
+$('fDone').onclick = done;
+$('mRetry').onclick = () => { message('Loading…', ''); load(); };
+document.addEventListener('keydown', e => {
+  if (screen === 'clue') {
+    if (e.key === 'Enter') { e.preventDefault(); if (document.activeElement === $('cBack')) back(); else if (document.activeElement === $('cHintBtn')) hint(); else found('pinch'); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); hint(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
+  } else if (screen === 'welcome' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    e.preventDefault(); const b = [...document.querySelectorAll('#welcome button')].filter(x => x.offsetParent);
+    const i = b.indexOf(document.activeElement); b[(i + (e.key === 'ArrowRight' ? 1 : b.length - 1)) % b.length].focus();
+  } else if (screen === 'final' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    e.preventDefault(); (document.activeElement === $('fDone') ? $('fAgain') : $('fDone')).focus();
+  }
+});
+document.addEventListener('pointerdown', unlockAudio, { once: true });
+document.addEventListener('keydown', unlockAudio, { once: true });
+
+/* ---------- voice (Meta AI on the glasses) ---------- */
+(() => {
+  const mc = document.modelContext || navigator.modelContext;
+  if (!mc || !mc.registerTool) return;
+  const reply = text => ({ content: [{ type: 'text', text }] }), none = { type: 'object', properties: {} };
+  const tools = [
+    { name: 'found_it', description: 'Scavenger hunt: I found the spot — show the next clue.', inputSchema: none,
+      execute: async () => { found('voice'); const c = clues[step]; return reply(c ? (c.is_final ? 'You made it!' : `Clue ${step + 1}.`) : 'OK.'); } },
+    { name: 'give_hint', description: 'Scavenger hunt: give me a hint for this clue.', inputSchema: none,
+      execute: async () => { hint(); const c = clues[step]; return reply(c && c.hint ? c.hint : 'No hint for this one — trust your instincts!'); } },
+    { name: 'read_clue', description: 'Scavenger hunt: read the current clue aloud.', inputSchema: none,
+      execute: async () => reply(screen === 'clue' && clues[step] ? clues[step].clue : 'Say "start the hunt" to begin.') },
+    { name: 'start_hunt', description: 'Scavenger hunt: start or continue the hunt.', inputSchema: none, execute: async () => { start(); return reply(`Clue ${step + 1}.`); } },
+    { name: 'start_over', description: 'Scavenger hunt: start over from the first clue.', inputSchema: none, execute: async () => { startOver(); return reply('Back to the start.'); } },
+  ];
+  for (const t of tools) { try { mc.registerTool(t); } catch (e) {} }
+})();
+
+message('Loading…', '');
+load();
+</script>
+</body>
+</html>
