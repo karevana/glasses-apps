@@ -66,11 +66,12 @@
   #nudge { position: absolute; top: calc(var(--u)*2); right: calc(var(--u)*3.5); font-size: calc(var(--u)*6); font-weight: 800;
     color: var(--mint); opacity: 0; transition: opacity .4s; pointer-events: none; }
   #nudge.on { opacity: 1; transition: none; }
-  .controls { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: calc(var(--u)*1.5);
+  .controls { display: grid; grid-template-columns: 1.25fr 1.2fr 1fr 1fr 1fr; gap: calc(var(--u)*1.5);
     padding: calc(var(--u)*1.6) calc(var(--u)*3.5) calc(var(--u)*2.6); }
   .controls button { padding: calc(var(--u)*2.2) 0; font-size: calc(var(--u)*4); font-weight: 700; }
-  .controls.withsave { grid-template-columns: 1.2fr 1fr 1fr 1fr 1.2fr; }
-  .controls.withsave button { font-size: calc(var(--u)*3.6); }
+  .controls.withsave { grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr 1fr; }
+  .controls button { white-space: nowrap; }
+  .controls.withsave button { font-size: calc(var(--u)*3.3); }
   #bSaveBpm { border-color: var(--mint); color: var(--mint); }
   #bSaveBpm[hidden] { display: none; }
   .tiltlive { font-size: calc(var(--u)*5); color: var(--mint); min-height: 1.3em; }
@@ -93,6 +94,7 @@
   <div class="prog"><div id="fill"></div></div>
   <div id="view"><div id="lines"></div><div id="count"></div><div id="nudge"></div></div>
   <div class="controls">
+    <button id="bList">☰ Songs</button>
     <button id="bGo">Start</button>
     <button id="bSlower">Slower</button>
     <button id="bFaster">Faster</button>
@@ -278,7 +280,8 @@ function renderList(note) {
   box.innerHTML = (note ? `<div class="dim">${esc(note)}</div>` : '') +
     songList.map((s, i) => `<button class="song" id="song${i}" data-i="${i}">${esc(s.title)}</button>`).join('');
   box.querySelectorAll('.song').forEach(b => b.addEventListener('click', () => openSong(songList[+b.dataset.i])));
-  setTimeout(() => $('song0').focus(), 0);
+  const cur = P.song ? songList.findIndex(x => x.id === P.song.id) : -1;   // after a song, focus that song in the list
+  setTimeout(() => { const el = $('song' + (cur >= 0 ? cur : 0)); el.focus(); el.scrollIntoView({ block: 'nearest' }); }, 0);
 }
 async function loadList() {
   if (!KEY()) { $('songs').innerHTML = `<div class="center"><div class="msg">This copy of Songbook has no key.</div><div class="dim">Add it on the glasses using the full address that ends in ?k=…</div></div>`; return; }
@@ -287,6 +290,11 @@ async function loadList() {
   catch (e) { renderList(songList.length ? 'Offline: showing saved list.' : 'Could not reach the songbook. ' + (e.name === 'AbortError' ? 'It took too long.' : e.message)); }
 }
 $('bRefresh').addEventListener('click', loadList);
+// ☰ Songs: stop this song and go back to the list (same as the glasses' Back gesture)
+function backToList() {
+  if (history.state && history.state.screen === 'play') history.back();
+  else { stopSong(); show('list'); renderList(); }
+}
 
 /* =====================================================================
    PLAYER
@@ -459,6 +467,7 @@ $('bGo').addEventListener('click', () => (P.state === 'playing' || P.state === '
 $('bSlower').addEventListener('click', () => changeSpeed(0.95));
 $('bFaster').addEventListener('click', () => changeSpeed(1.05));
 $('bRestart').addEventListener('click', restart);
+$('bList').addEventListener('click', backToList);
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 
 async function keepAwake() { try { if ('wakeLock' in navigator && !P.wake) P.wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
@@ -564,6 +573,8 @@ const reply = text => ({ content: [{ type: 'text', text }] });
 const norm = s => s.toLowerCase().replace(/\(.*?\)/g, '').replace(/[^a-z0-9 ]/g, '').trim();
 const inSong = () => $('play').classList.contains('active') && P.units.length;
 const TOOLS = [
+  { name: 'song_list', description: 'Stop the song and go back to the Songbook song list to choose another song.', inputSchema: { type: 'object', properties: {} },
+    execute: async () => { backToList(); return { content: [{ type: 'text', text: 'Back to your songs.' }] }; } },
   { name: 'open_song', description: 'Open a song from the Songbook by its title (partial titles are fine).',
     inputSchema: { type: 'object', properties: { title: { type: 'string', description: 'Song title, e.g. "Jolene"' } }, required: ['title'] },
     execute: async ({ title }) => {
